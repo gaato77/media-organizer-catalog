@@ -1,4 +1,4 @@
-# Public manifest checkpoint verification
+# Public manifest checkpoint verification — final rerun
 name: Production catalog source probe
 
 on:
