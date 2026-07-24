@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 25,
-    "results": [
-      {
-        "cache_bytes": 11303,
-        "elapsed_seconds": 161.753,
-        "media_type": "movie",
-        "records": 25
-      },
-      {
-        "cache_bytes": 10214,
-        "elapsed_seconds": 1.041,
-        "media_type": "series",
-        "records": 25
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 21517,
-    "total_records": 50
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.40s\nAll checks passed!\n28 files already formatted\nSuccess: no issues found in 13 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.37s\nUP040 Type alias `WorkRow` uses `TypeAlias` annotation instead of the `type` keyword\n  --> builder/src/media_catalog_builder/delta.py:24:1\n   |\n22 |     }\n23 | )\n24 | WorkRow: TypeAlias = tuple[int, int, int, str, tuple[tuple[str, int], ...]]\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\nhelp: Use the `type` keyword\n\nFound 1 error.\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"
 }
