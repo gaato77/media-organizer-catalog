@@ -142,8 +142,7 @@ def test_fetch_interval_uses_shared_candidate_pages_and_local_classification(
         ("Q20", "http://www.wikidata.org/entity/Q5398426"),
         (
             "Q30",
-            "http://www.wikidata.org/entity/Q11424,"
-            "http://www.wikidata.org/entity/Q5398426",
+            "http://www.wikidata.org/entity/Q11424,http://www.wikidata.org/entity/Q5398426",
         ),
     )
     empty_candidates = _candidate_payload()
@@ -190,17 +189,13 @@ def test_fetch_interval_uses_shared_candidate_pages_and_local_classification(
     assert [record.qid for record in series] == [20, 30]
     assert len(http.calls) == 6
     candidate_calls = [
-        call
-        for call in http.calls
-        if "GROUP_CONCAT(DISTINCT STR(?class)" in call[2]["query"]
+        call for call in http.calls if "GROUP_CONCAT(DISTINCT STR(?class)" in call[2]["query"]
     ]
     assert len(candidate_calls) == 2
     assert "Q30" in candidate_calls[1][2]["query"]
     assert "VALUES ?item { wd:Q10 }" in http.calls[4][2]["query"]
     assert "VALUES ?item { wd:Q20 wd:Q30 }" in http.calls[5][2]["query"]
-    assert (
-        tmp_path / "source-candidates-20010101T000000Z-20010201T000000Z"
-    ).is_dir()
+    assert (tmp_path / "source-candidates-20010101T000000Z-20010201T000000Z").is_dir()
     assert list(tmp_path.rglob("*.tmp")) == []
 
 
@@ -221,23 +216,13 @@ def test_fetch_interval_reuses_completed_detail_batches_after_interruption(
     second_batch = _detail_payload(("Q3", "2001-01-01T00:00:00Z", "Three"))
     page_dir = tmp_path / "source-candidates-20010101T000000Z-20010201T000000Z"
     page_dir.mkdir()
-    (page_dir / "page-000001.json").write_text(
-        json.dumps(candidates), encoding="utf-8"
-    )
-    (page_dir / "page-000002.json").write_text(
-        json.dumps(_candidate_payload()), encoding="utf-8"
-    )
-    (tmp_path / "movie-classes.json").write_text(
-        json.dumps(movie_classes), encoding="utf-8"
-    )
-    (tmp_path / "series-classes.json").write_text(
-        json.dumps(series_classes), encoding="utf-8"
-    )
+    (page_dir / "page-000001.json").write_text(json.dumps(candidates), encoding="utf-8")
+    (page_dir / "page-000002.json").write_text(json.dumps(_candidate_payload()), encoding="utf-8")
+    (tmp_path / "movie-classes.json").write_text(json.dumps(movie_classes), encoding="utf-8")
+    (tmp_path / "series-classes.json").write_text(json.dumps(series_classes), encoding="utf-8")
     batch_dir = tmp_path / "movie-details"
     batch_dir.mkdir()
-    (batch_dir / "batch-000001.json").write_text(
-        json.dumps(first_batch), encoding="utf-8"
-    )
+    (batch_dir / "batch-000001.json").write_text(json.dumps(first_batch), encoding="utf-8")
     http = FakeHttp([second_batch])
     source = WikidataSource(
         "https://query.wikidata.org/sparql",
