@@ -8,8 +8,10 @@ on:
     paths:
       - .github/workflows/probe-wikidata.yml
       - builder/scripts/probe_wikidata.py
+      - builder/src/media_catalog_builder/config.py
       - builder/src/media_catalog_builder/http.py
       - builder/src/media_catalog_builder/wikidata.py
+      - builder/tests/test_config.py
       - builder/tests/test_http.py
       - builder/tests/test_probe.py
       - builder/tests/test_wikidata.py
