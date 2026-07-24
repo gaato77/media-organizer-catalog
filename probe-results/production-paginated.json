@@ -1,7 +1,41 @@
 {
-  "probe_exit_code": null,
+  "monthly_release": {
+    "catalog_records": 880,
+    "compressed_bytes": 68661,
+    "database_bytes": 163840,
+    "release_files": [
+      "catalog-full-2026.07.24.sqlite.zip",
+      "checksums.sha256",
+      "manifest.json"
+    ],
+    "skipped_records": 137,
+    "source_records": 1017
+  },
+  "package_exit_code": 0,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................................ [ 81%]\n......F.........                                                         [100%]\n=================================== FAILURES ===================================\n__________ test_production_probe_builds_and_uploads_validated_release __________\n\n    def test_production_probe_builds_and_uploads_validated_release() -> None:\n        workflow = (ROOT / \".github\" / \"workflows\" / \"probe-wikidata.yml\").read_text(encoding=\"utf-8\")\n>       assert \"from media_catalog_builder.probe_release import build_probe_release\" in workflow\nE       assert 'from media_catalog_builder.probe_release import build_probe_release' in '# Complete January 2025 end-to-end catalog source verification\\nname: Production catalog source probe\\n\\non:\\n  workf...code }}\\n        run: |\\n          test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\\n          test \"${PROBE_EXIT_CODE:-1}\" = \"0\"\\n'\n\nbuilder/tests/test_tooling.py:41: AssertionError\n=========================== short test summary info ============================\nFAILED builder/tests/test_tooling.py::test_production_probe_builds_and_uploads_validated_release - assert 'from media_catalog_builder.probe_release import build_probe_release' in '# Complete January 2025 end-to-end catalog source verification\\nname: Production catalog source probe\\n\\non:\\n  workf...code }}\\n        run: |\\n          test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\\n          test \"${PROBE_EXIT_CODE:-1}\" = \"0\"\\n'\n1 failed, 87 passed in 2.38s\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 1000,
+    "results": [
+      {
+        "cache_bytes": 418349,
+        "elapsed_seconds": 90.976,
+        "media_type": "movie",
+        "records": 985
+      },
+      {
+        "cache_bytes": 12755,
+        "elapsed_seconds": 1.144,
+        "media_type": "series",
+        "records": 32
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 431104,
+    "total_records": 1017
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................................ [ 81%]\n................                                                         [100%]\n88 passed in 0.84s\nAll checks passed!\n37 files already formatted\nSuccess: no issues found in 17 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
