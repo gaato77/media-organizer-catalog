@@ -50,9 +50,7 @@ def _recognition_names(source: SourceRecord, canonical_title: str) -> tuple[str,
 
 def to_catalog_record(source: SourceRecord) -> CatalogRecord | None:
     original_titles = tuple(
-        cleaned
-        for title in source.original_titles
-        if (cleaned := _clean(title)) is not None
+        cleaned for title in source.original_titles if (cleaned := _clean(title)) is not None
     )
 
     canonical_title = _first_latin(original_titles)
