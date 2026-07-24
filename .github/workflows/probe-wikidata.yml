@@ -1,4 +1,4 @@
-# Clean verification rerun after formatting stabilization
+# SQLite catalog checkpoint verification
 name: Production catalog source probe
 
 on:
@@ -8,8 +8,8 @@ on:
       - feature/compact-catalog-builder
     paths:
       - .github/workflows/probe-wikidata.yml
-      - builder/src/media_catalog_builder/wikidata.py
-      - builder/tests/test_wikidata.py
+      - builder/**
+      - schema/**
 
 permissions:
   contents: write
@@ -27,7 +27,7 @@ jobs:
           cache-dependency-path: builder/pyproject.toml
       - run: python -m pip install -e "builder[test]"
 
-      - name: Verify code
+      - name: Verify code and SQLite smoke build
         id: verify
         shell: bash
         run: |
@@ -36,7 +36,8 @@ jobs:
             python -m pytest builder/tests -q &&
             python -m ruff check builder &&
             python -m ruff format --check builder &&
-            python -m mypy builder/src/media_catalog_builder
+            python -m mypy builder/src/media_catalog_builder &&
+            python builder/scripts/smoke_lookup.py
           } > verification.log 2>&1
           status=$?
           cat verification.log
@@ -110,6 +111,7 @@ jobs:
         with:
           name: production-catalog-source-probe
           path: |
+            build/sample.sqlite
             probe-output
             verification.log
             probe.log
@@ -125,7 +127,7 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record paginated production probe"
+          git commit -m "test: record SQLite catalog checkpoint"
           git push
 
       - name: Enforce successful verification and probe
