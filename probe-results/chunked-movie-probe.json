@@ -1,0 +1,12 @@
+{
+  "chunks": [],
+  "class_bytes": 99275,
+  "class_chunk_size": 200,
+  "class_count": 828,
+  "class_seconds": 0.602,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "exception": "504 Server Error: Gateway Timeout for url: https://query.wikidata.org/sparql",
+  "exception_type": "HTTPError",
+  "media_type": "movie",
+  "success": false
+}
