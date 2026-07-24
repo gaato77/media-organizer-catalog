@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -73,8 +73,8 @@ def test_class_query_isolated_from_item_lookup():
 
 
 def test_interval_query_uses_exact_cached_classes_and_relevance_fields():
-    start = datetime(2026, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2026, 2, 1, tzinfo=timezone.utc)
+    start = datetime(2026, 1, 1, tzinfo=UTC)
+    end = datetime(2026, 2, 1, tzinfo=UTC)
 
     query = build_interval_query(
         ("Q11424", "Q24869"),
@@ -103,8 +103,8 @@ def test_fetch_interval_caches_classes_and_items(tmp_path: Path):
         http,  # type: ignore[arg-type]
     )
     cache = tmp_path / "movie-2001-01.json"
-    start = datetime(2001, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2001, 2, 1, tzinfo=timezone.utc)
+    start = datetime(2001, 1, 1, tzinfo=UTC)
+    end = datetime(2001, 2, 1, tzinfo=UTC)
 
     first = source.fetch_interval(MediaType.MOVIE, start, end, cache, limit=25)
     second = source.fetch_interval(MediaType.MOVIE, start, end, cache, limit=25)
