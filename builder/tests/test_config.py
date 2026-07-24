@@ -4,7 +4,6 @@ import pytest
 
 from media_catalog_builder.config import CatalogConfig
 
-
 CONFIG_PATH = Path(__file__).parents[1] / "config" / "catalog.toml"
 
 
