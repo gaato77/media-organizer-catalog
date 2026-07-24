@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 25,
-    "results": [
-      {
-        "cache_bytes": 11303,
-        "elapsed_seconds": 30.716,
-        "media_type": "movie",
-        "records": 25
-      },
-      {
-        "cache_bytes": 10214,
-        "elapsed_seconds": 1.132,
-        "media_type": "series",
-        "records": 25
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 21517,
-    "total_records": 50
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": ".............................................................            [100%]\n61 passed in 0.99s\nAll checks passed!\n30 files already formatted\nSuccess: no issues found in 14 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": ".............................................................            [100%]\n61 passed in 0.63s\nSIM117 [*] Use a single `with` statement with multiple contexts instead of nested `with` statements\n  --> builder/src/media_catalog_builder/package.py:82:9\n   |\n80 |           info._compresslevel = 9  # type: ignore[attr-defined]\n81 |\n82 | /         with zipfile.ZipFile(\n83 | |             temporary,\n84 | |             mode=\"w\",\n85 | |             compression=zipfile.ZIP_DEFLATED,\n86 | |             compresslevel=9,\n87 | |             allowZip64=True,\n88 | |             strict_timestamps=True,\n89 | |         ) as archive:\n90 | |             with source.open(\"rb\") as input_handle:\n   | |___________________________________________________^\n91 |                   with archive.open(info, mode=\"w\", force_zip64=False) as output_handle:\n92 |                       _copy_to_archive(input_handle, output_handle)\n   |\nhelp: Combine `with` statements\n   |\n88 |             strict_timestamps=True,\n   -         ) as archive:\n   -             with source.open(\"rb\") as input_handle:\n   -                 with archive.open(info, mode=\"w\", force_zip64=False) as output_handle:\n   -                     _copy_to_archive(input_handle, output_handle)\n89 +         ) as archive, source.open(\"rb\") as input_handle:\n90 +             with archive.open(info, mode=\"w\", force_zip64=False) as output_handle:\n91 +                 _copy_to_archive(input_handle, output_handle)\n92 |\n   |\n\nFound 1 error.\n[*] 1 fixable with the `--fix` option.\n"
 }
