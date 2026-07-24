@@ -38,13 +38,13 @@ jobs:
           """
           result = {
               "endpoint": endpoint,
-              "request_method": "POST",
+              "request_method": "GET",
               "requested_action": "sparql_json_export",
           }
           try:
-              response = requests.post(
+              response = requests.get(
                   endpoint,
-                  data={"query": query, "action": "sparql_json_export"},
+                  params={"query": query, "action": "sparql_json_export"},
                   headers={
                       "Accept": "application/sparql-results+json",
                       "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
