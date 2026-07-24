@@ -1,4 +1,4 @@
-# Public manifest checkpoint verification — final rerun
+# Atomic release assembly checkpoint verification
 name: Production catalog source probe
 
 on:
@@ -128,7 +128,7 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record public manifest checkpoint"
+          git commit -m "test: record atomic release assembly checkpoint"
           git push
 
       - name: Enforce successful verification and probe
