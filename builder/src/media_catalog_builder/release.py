@@ -298,8 +298,10 @@ def _read_checksums(path: Path) -> dict[str, str]:
     result: dict[str, str] = {}
     for line in lines:
         parts = line.split("  ", 1)
-        if len(parts) != 2 or len(parts[0]) != 64 or any(
-            character not in "0123456789abcdef" for character in parts[0]
+        if (
+            len(parts) != 2
+            or len(parts[0]) != 64
+            or any(character not in "0123456789abcdef" for character in parts[0])
         ):
             raise ValueError("invalid checksums.sha256")
         checksum, name = parts
