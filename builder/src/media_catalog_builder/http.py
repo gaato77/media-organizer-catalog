@@ -30,6 +30,14 @@ class SessionLike(Protocol):
         timeout: float,
     ) -> ResponseLike: ...
 
+    def post(
+        self,
+        url: str,
+        *,
+        data: Mapping[str, str],
+        timeout: float,
+    ) -> ResponseLike: ...
+
 
 class RetryingHttpClient:
     def __init__(
@@ -85,17 +93,32 @@ class RetryingHttpClient:
                     pass
         return min(float(2**attempt), _MAX_BACKOFF_SECONDS)
 
-    def get_json(self, url: str, params: Mapping[str, str]) -> dict[str, Any]:
+    def _request_json(
+        self,
+        method: str,
+        url: str,
+        values: Mapping[str, str],
+    ) -> dict[str, Any]:
         for attempt in range(self._request_retries):
             self._wait_for_request_slot()
             self._last_request_started = self._monotonic()
             response: ResponseLike | None = None
             try:
-                response = self._session.get(
-                    url,
-                    params=params,
-                    timeout=self._timeout_seconds,
-                )
+                if method == "GET":
+                    response = self._session.get(
+                        url,
+                        params=values,
+                        timeout=self._timeout_seconds,
+                    )
+                elif method == "POST":
+                    response = self._session.post(
+                        url,
+                        data=values,
+                        timeout=self._timeout_seconds,
+                    )
+                else:
+                    raise ValueError(f"unsupported HTTP method: {method}")
+
                 if response.status_code in _RETRYABLE_STATUS_CODES:
                     if attempt + 1 == self._request_retries:
                         response.raise_for_status()
@@ -112,3 +135,9 @@ class RetryingHttpClient:
                 self._sleep(self._retry_delay(response, attempt))
 
         raise RuntimeError("HTTP retry loop ended unexpectedly")
+
+    def get_json(self, url: str, params: Mapping[str, str]) -> dict[str, Any]:
+        return self._request_json("GET", url, params)
+
+    def post_json(self, url: str, data: Mapping[str, str]) -> dict[str, Any]:
+        return self._request_json("POST", url, data)
