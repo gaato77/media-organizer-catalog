@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "......................................................................   [100%]\n70 passed in 0.58s\nAll checks passed!\n32 files already formatted\nbuilder/src/media_catalog_builder/package.py:93: error: Argument 2 to \"_copy_to_archive\" has incompatible type \"IO[bytes]\"; expected \"BinaryIO\"  [arg-type]\nFound 1 error in 1 file (checked 15 source files)\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 45.739,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 0.945,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "......................................................................   [100%]\n70 passed in 0.65s\nAll checks passed!\n32 files already formatted\nSuccess: no issues found in 15 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
