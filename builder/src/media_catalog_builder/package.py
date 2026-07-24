@@ -38,8 +38,7 @@ def enforce_size(path: Path, max_mib: int, *, label: str = "file") -> None:
     actual_bytes = path.stat().st_size
     if actual_bytes > maximum_bytes:
         raise ValueError(
-            f"{label} exceeds {max_mib} MiB "
-            f"({actual_bytes} bytes > {maximum_bytes} bytes)"
+            f"{label} exceeds {max_mib} MiB ({actual_bytes} bytes > {maximum_bytes} bytes)"
         )
 
 
@@ -79,16 +78,18 @@ def package_zip(source: Path, destination: Path, archive_name: str) -> PackageIn
         info.flag_bits = 0
         info._compresslevel = 9  # type: ignore[attr-defined]
 
-        with zipfile.ZipFile(
-            temporary,
-            mode="w",
-            compression=zipfile.ZIP_DEFLATED,
-            compresslevel=9,
-            allowZip64=True,
-            strict_timestamps=True,
-        ) as archive, source.open("rb") as input_handle, archive.open(
-            info, mode="w", force_zip64=False
-        ) as output_handle:
+        with (
+            zipfile.ZipFile(
+                temporary,
+                mode="w",
+                compression=zipfile.ZIP_DEFLATED,
+                compresslevel=9,
+                allowZip64=True,
+                strict_timestamps=True,
+            ) as archive,
+            source.open("rb") as input_handle,
+            archive.open(info, mode="w", force_zip64=False) as output_handle,
+        ):
             _copy_to_archive(input_handle, output_handle)
 
         with temporary.open("r+b") as handle:
