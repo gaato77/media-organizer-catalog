@@ -292,9 +292,7 @@ def _payload_with_aliases(
 ) -> dict[str, Any]:
     enriched: list[Binding] = []
     for binding in _extract_bindings(payload):
-        mutable: dict[str, Mapping[str, str]] = {
-            key: dict(value) for key, value in binding.items()
-        }
+        mutable: dict[str, Mapping[str, str]] = {key: dict(value) for key, value in binding.items()}
         item = binding.get("item")
         item_value = item.get("value") if item is not None else None
         numeric_qid = parse_qid(item_value) if item_value is not None else None
@@ -305,9 +303,7 @@ def _payload_with_aliases(
     return _payload_for_bindings(enriched)
 
 
-def _records_from_payload(
-    payload: Mapping[str, Any], media_type: MediaType
-) -> list[SourceRecord]:
+def _records_from_payload(payload: Mapping[str, Any], media_type: MediaType) -> list[SourceRecord]:
     records: list[SourceRecord] = []
     for binding in _extract_bindings(payload):
         record = binding_to_source(binding, media_type)
