@@ -27,7 +27,7 @@ def month_intervals(year: int) -> tuple[tuple[datetime, datetime], ...]:
         raise ValueError("year must be between 1 and 9998")
     starts = [datetime(year, month, 1, tzinfo=UTC) for month in range(1, 13)]
     starts.append(datetime(year + 1, 1, 1, tzinfo=UTC))
-    return tuple(zip(starts, starts[1:], strict=True))
+    return tuple(zip(starts[:-1], starts[1:], strict=True))
 
 
 def _read_bindings(path: Path) -> list[dict[str, dict[str, str]]]:
