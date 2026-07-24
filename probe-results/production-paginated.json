@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": ".............................................................            [100%]\n61 passed in 0.57s\nAll checks passed!\nunformatted: File would be reformatted\n   --> builder/src/media_catalog_builder/delta.py:1:1\n    |\n267 |             connection.execute(\n    -                 \"DELETE FROM names WHERE work_qid IN \"\n    -                 \"(SELECT qid FROM delta_db.upsert_works)\"\n268 +                 \"DELETE FROM names WHERE work_qid IN (SELECT qid FROM delta_db.upsert_works)\"\n269 |             )\n    |\n\n1 file would be reformatted, 29 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 30.716,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 1.132,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": ".............................................................            [100%]\n61 passed in 0.99s\nAll checks passed!\n30 files already formatted\nSuccess: no issues found in 14 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
