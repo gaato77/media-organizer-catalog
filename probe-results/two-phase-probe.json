@@ -1,0 +1,29 @@
+{
+  "endpoint": "https://query.wikidata.org/sparql",
+  "results": [
+    {
+      "class_bytes": 99275,
+      "class_count": 828,
+      "class_seconds": 0.557,
+      "exception": "504 Server Error: Gateway Timeout for url: https://query.wikidata.org/sparql",
+      "exception_type": "HTTPError",
+      "media_type": "movie",
+      "success": false
+    },
+    {
+      "class_bytes": 26309,
+      "class_count": 218,
+      "class_seconds": 0.228,
+      "detail_bytes": 11182,
+      "detail_count": 25,
+      "detail_seconds": 0.116,
+      "item_bytes": 7300,
+      "item_count": 25,
+      "item_seconds": 2.15,
+      "media_type": "series",
+      "success": true
+    }
+  ],
+  "strategy": "class closure, exact item selection, exact item metadata",
+  "success": false
+}
