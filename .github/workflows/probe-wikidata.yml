@@ -1,4 +1,4 @@
-# Transactional delta checkpoint verification — clean rerun
+# Transactional delta checkpoint verification — final rerun
 name: Production catalog source probe
 
 on:
