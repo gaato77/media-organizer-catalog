@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  diagnose-qlever:
+  diagnose-wdqs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -21,36 +21,47 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install "requests>=2.32,<3"
-      - name: Probe QLever response format
+      - name: Probe exact television-series type
         run: |
           python - <<'PY'
           import json
+          import time
           from pathlib import Path
 
           import requests
 
-          endpoint = "https://qlever.cs.uni-freiburg.de/api/wikidata"
+          endpoint = "https://query.wikidata.org/sparql"
           query = """PREFIX wd: <http://www.wikidata.org/entity/>
-          SELECT ?item WHERE {
-            VALUES ?item { wd:Q42 }
+          PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+          PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+          SELECT ?item ?releaseDate WHERE {
+            ?item wdt:P31 wd:Q5398426 ;
+                  wdt:P345 ?imdbId ;
+                  wdt:P577 ?releaseDate .
+            FILTER(
+              ?releaseDate >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+              ?releaseDate < "2025-02-01T00:00:00Z"^^xsd:dateTime
+            )
           }
-          LIMIT 1
+          LIMIT 25
           """
           result = {
               "endpoint": endpoint,
-              "request_method": "GET",
-              "requested_action": "sparql_json_export",
+              "request_method": "POST",
+              "query_shape": "exact P31 Q5398426, no subclass path, no labels, no aggregation",
           }
+          started = time.perf_counter()
           try:
-              response = requests.get(
+              response = requests.post(
                   endpoint,
-                  params={"query": query, "action": "sparql_json_export"},
+                  data={"query": query, "format": "json"},
                   headers={
                       "Accept": "application/sparql-results+json",
                       "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
                   },
                   timeout=70,
               )
+              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
               result["status_code"] = response.status_code
               result["content_type"] = response.headers.get("Content-Type", "")
               result["response_bytes"] = len(response.content)
@@ -61,17 +72,15 @@ jobs:
                   result["body_preview"] = response.text[:500]
               else:
                   result["json"] = True
-                  result["top_level_type"] = type(payload).__name__
-                  if isinstance(payload, dict):
-                      result["top_level_keys"] = sorted(payload.keys())
-                      bindings = payload.get("results", {}).get("bindings", [])
-                      result["standard_binding_count"] = len(bindings) if isinstance(bindings, list) else None
-                  result["payload_preview"] = json.dumps(payload, ensure_ascii=False)[:500]
+                  bindings = payload.get("results", {}).get("bindings", []) if isinstance(payload, dict) else []
+                  result["binding_count"] = len(bindings) if isinstance(bindings, list) else None
+                  result["top_level_keys"] = sorted(payload.keys()) if isinstance(payload, dict) else []
           except Exception as exc:
+              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
               result["exception_type"] = type(exc).__name__
               result["exception"] = str(exc)[:500]
 
-          target = Path("probe-results/qlever-api.json")
+          target = Path("probe-results/wdqs-exact-series.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -81,15 +90,15 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: qlever-api-diagnostic
-          path: probe-results/qlever-api.json
+          name: wdqs-exact-series-diagnostic
+          path: probe-results/wdqs-exact-series.json
       - name: Save diagnostic on feature branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/qlever-api.json
+          git add probe-results/wdqs-exact-series.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record QLever API diagnostic"
+          git commit -m "test: record exact-series WDQS diagnostic"
           git push
