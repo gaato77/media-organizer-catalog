@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 25,
-    "results": [
-      {
-        "cache_bytes": 11303,
-        "elapsed_seconds": 45.739,
-        "media_type": "movie",
-        "records": 25
-      },
-      {
-        "cache_bytes": 10214,
-        "elapsed_seconds": 0.945,
-        "media_type": "series",
-        "records": 25
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 21517,
-    "total_records": 50
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "......................................................................   [100%]\n70 passed in 0.65s\nAll checks passed!\n32 files already formatted\nSuccess: no issues found in 15 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": "......................................F................................. [ 91%]\n.......                                                                  [100%]\n=================================== FAILURES ===================================\n___________ test_public_schema_and_examples_match_manifest_contract ____________\n\n    def test_public_schema_and_examples_match_manifest_contract() -> None:\n        root = Path(__file__).resolve().parents[2]\n>       schema = json.loads((root / \"schema\" / \"manifest-schema-v1.json\").read_text())\n                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n\nbuilder/tests/test_manifest.py:146: \n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py:1027: in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ \n\nself = PosixPath('/home/runner/work/media-organizer-catalog/media-organizer-catalog/schema/manifest-schema-v1.json')\nmode = 'r', buffering = -1, encoding = 'locale', errors = None, newline = None\n\n    def open(self, mode='r', buffering=-1, encoding=None,\n             errors=None, newline=None):\n        \"\"\"\n        Open the file pointed to by this path and return a file object, as\n        the built-in open() function does.\n        \"\"\"\n        if \"b\" not in mode:\n            encoding = io.text_encoding(encoding)\n>       return io.open(self, mode, buffering, encoding, errors, newline)\n               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nE       FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/media-organizer-catalog/media-organizer-catalog/schema/manifest-schema-v1.json'\n\n/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py:1013: FileNotFoundError\n=========================== short test summary info ============================\nFAILED builder/tests/test_manifest.py::test_public_schema_and_examples_match_manifest_contract - FileNotFoundError: [Errno 2] No such file or directory: '/home/runner/work/media-organizer-catalog/media-organizer-catalog/schema/manifest-schema-v1.json'\n1 failed, 78 passed in 0.95s\n"
 }
