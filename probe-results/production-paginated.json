@@ -8,13 +8,13 @@
     "results": [
       {
         "cache_bytes": 11303,
-        "elapsed_seconds": 73.861,
+        "elapsed_seconds": 80.094,
         "media_type": "movie",
         "records": 25
       },
       {
         "cache_bytes": 10214,
-        "elapsed_seconds": 0.864,
+        "elapsed_seconds": 0.887,
         "media_type": "series",
         "records": 25
       }
@@ -24,5 +24,5 @@
     "total_records": 50
   },
   "verification_exit_code": 0,
-  "verification_log_tail": "...............................................                          [100%]\n47 passed in 0.58s\nAll checks passed!\n22 files already formatted\nSuccess: no issues found in 11 source files\n"
+  "verification_log_tail": "...............................................                          [100%]\n47 passed in 0.34s\nAll checks passed!\n22 files already formatted\nSuccess: no issues found in 11 source files\n"
 }
