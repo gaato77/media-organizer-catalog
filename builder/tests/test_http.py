@@ -37,7 +37,11 @@ class FakeSession:
         self.headers: dict[str, str] = {}
 
     def get(self, url: str, **kwargs: Any) -> FakeResponse:
-        self.calls.append({"url": url, **kwargs})
+        self.calls.append({"method": "GET", "url": url, **kwargs})
+        return self.responses.pop(0)
+
+    def post(self, url: str, **kwargs: Any) -> FakeResponse:
+        self.calls.append({"method": "POST", "url": url, **kwargs})
         return self.responses.pop(0)
 
 
@@ -61,6 +65,22 @@ def test_http_retries_503_then_returns_json():
 
     assert result == {"ok": True}
     assert len(session.calls) == 2
+    assert sleeps == [1.0]
+
+
+def test_post_json_uses_form_data_and_retries_504():
+    sleeps: list[float] = []
+    session = FakeSession([FakeResponse(504), FakeResponse(200, {"ok": True})])
+
+    result = make_client(session, sleeps).post_json(
+        "https://example.test",
+        {"query": "SELECT * WHERE {}", "format": "json"},
+    )
+
+    assert result == {"ok": True}
+    assert [call["method"] for call in session.calls] == ["POST", "POST"]
+    assert session.calls[0]["data"]["format"] == "json"
+    assert "params" not in session.calls[0]
     assert sleeps == [1.0]
 
 
