@@ -1,0 +1,16 @@
+schema_version = 1
+manifest_schema_version = 1
+bootstrap_start_year = 1870
+future_years = 2
+languages = ["en", "es"]
+max_names_per_work = 4
+max_compressed_mib = 100
+max_installed_mib = 250
+target_delta_mib = 5
+request_timeout_seconds = 90
+request_interval_seconds = 1.0
+request_retries = 5
+modified_window_overlap_hours = 24
+supported_delta_versions = 8
+user_agent = "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)"
+sparql_endpoint = "https://query.wikidata.org/sparql"
