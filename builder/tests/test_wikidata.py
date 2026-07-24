@@ -88,8 +88,8 @@ def test_interval_query_uses_exact_cached_classes_and_relevance_fields():
     assert "wdt:P31/wdt:P279*" not in query
     assert "wdt:P345" in query
     assert "wdt:P577" in query
-    assert '2026-01-01T00:00:00Z' in query
-    assert '2026-02-01T00:00:00Z' in query
+    assert "2026-01-01T00:00:00Z" in query
+    assert "2026-02-01T00:00:00Z" in query
     assert "GROUP_CONCAT" in query
     assert "LIMIT 250" in query
 
