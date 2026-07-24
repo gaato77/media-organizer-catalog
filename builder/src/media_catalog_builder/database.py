@@ -132,8 +132,7 @@ class CatalogDatabase:
 
     def _load_record(self, qid: int) -> CatalogRecord:
         work = self._connection.execute(
-            "SELECT qid, media_type, release_year, canonical_title "
-            "FROM works WHERE qid = ?",
+            "SELECT qid, media_type, release_year, canonical_title FROM works WHERE qid = ?",
             (qid,),
         ).fetchone()
         if work is None:
@@ -141,8 +140,7 @@ class CatalogDatabase:
         names = tuple(
             str(row["normalized_name"])
             for row in self._connection.execute(
-                "SELECT normalized_name FROM names "
-                "WHERE work_qid = ? ORDER BY name_rank",
+                "SELECT normalized_name FROM names WHERE work_qid = ? ORDER BY name_rank",
                 (qid,),
             )
         )
