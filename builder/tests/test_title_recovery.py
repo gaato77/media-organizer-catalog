@@ -154,6 +154,11 @@ def test_skip_audit_counts_recovered_and_remaining_records() -> None:
     assert report["baseline_skipped_records"] == 3
     assert report["recovered_records"] == 1
     assert report["remaining_skipped_records"] == 2
+    assert report["recovered_qids"] == ["Q3"]
+    assert report["remaining_qids_by_reason"] == {
+        "missing_titles": ["Q1"],
+        "non_latin_titles_only": ["Q2"],
+    }
     assert report["by_remaining_reason"] == {
         "missing_titles": 1,
         "non_latin_titles_only": 1,
