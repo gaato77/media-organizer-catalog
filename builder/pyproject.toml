@@ -9,7 +9,12 @@ requires-python = ">=3.12"
 dependencies = ["requests>=2.32,<3"]
 
 [project.optional-dependencies]
-test = ["pytest>=8.3,<9"]
+test = [
+    "mypy>=1.14,<3",
+    "pytest>=8.3,<9",
+    "ruff>=0.9,<1",
+    "types-requests>=2.32,<3",
+]
 
 [project.scripts]
 media-catalog-builder = "media_catalog_builder.cli:console_main"
@@ -19,3 +24,24 @@ package-dir = {"" = "src"}
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/media_catalog_builder"]
+show_error_codes = true
+pretty = true
+warn_unused_configs = true
