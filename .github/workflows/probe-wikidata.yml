@@ -21,67 +21,98 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install "requests>=2.32,<3"
-      - name: Probe isolated television-series hierarchy
+      - name: Probe cached-class series query strategy
         run: |
           python - <<'PY'
           import json
+          import re
           import time
           from pathlib import Path
 
           import requests
 
           endpoint = "https://query.wikidata.org/sparql"
-          query = """PREFIX wd: <http://www.wikidata.org/entity/>
+          headers = {
+              "Accept": "application/sparql-results+json",
+              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
+          }
+          result = {
+              "endpoint": endpoint,
+              "request_method": "POST",
+              "query_shape": "cached class closure followed by exact P31 VALUES",
+          }
+
+          class_query = """PREFIX wd: <http://www.wikidata.org/entity/>
           PREFIX wdt: <http://www.wikidata.org/prop/direct/>
           SELECT DISTINCT ?class WHERE {
-            ?class wdt:P279* wd:Q5398426 .
+            VALUES ?root { wd:Q5398426 wd:Q1259759 }
+            ?class wdt:P279* ?root .
           }
           ORDER BY ?class
           LIMIT 1000
           """
-          result = {
-              "endpoint": endpoint,
-              "request_method": "POST",
-              "query_shape": "isolated subclass closure for Q5398426",
-              "limit": 1000,
-          }
-          started = time.perf_counter()
+
           try:
-              response = requests.post(
+              started = time.perf_counter()
+              class_response = requests.post(
                   endpoint,
-                  data={"query": query, "format": "json"},
-                  headers={
-                      "Accept": "application/sparql-results+json",
-                      "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
-                  },
+                  data={"query": class_query, "format": "json"},
+                  headers=headers,
                   timeout=70,
               )
-              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
-              result["status_code"] = response.status_code
-              result["content_type"] = response.headers.get("Content-Type", "")
-              result["response_bytes"] = len(response.content)
-              try:
-                  payload = response.json()
-              except ValueError:
-                  result["json"] = False
-                  result["body_preview"] = response.text[:500]
-              else:
-                  result["json"] = True
-                  bindings = payload.get("results", {}).get("bindings", []) if isinstance(payload, dict) else []
-                  result["class_count"] = len(bindings) if isinstance(bindings, list) else None
-                  if isinstance(bindings, list):
-                      result["sample_classes"] = [
-                          row.get("class", {}).get("value", "")
-                          for row in bindings[:10]
-                          if isinstance(row, dict)
-                      ]
-                  result["hit_limit"] = len(bindings) == 1000 if isinstance(bindings, list) else None
+              result["class_elapsed_seconds"] = round(time.perf_counter() - started, 3)
+              result["class_status_code"] = class_response.status_code
+              class_response.raise_for_status()
+              class_payload = class_response.json()
+              class_bindings = class_payload.get("results", {}).get("bindings", [])
+              qids = []
+              for row in class_bindings:
+                  value = row.get("class", {}).get("value", "")
+                  match = re.fullmatch(r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)", value)
+                  if match:
+                      qids.append(match.group(1))
+              qids = sorted(set(qids), key=lambda value: int(value[1:]))
+              result["class_count"] = len(qids)
+              result["class_hit_limit"] = len(class_bindings) == 1000
+
+              values = " ".join(f"wd:{qid}" for qid in qids)
+              item_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+              PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+              SELECT DISTINCT ?item ?releaseDate WHERE {{
+                VALUES ?class {{ {values} }}
+                ?item wdt:P31 ?class ;
+                      wdt:P345 ?imdbId ;
+                      wdt:P577 ?releaseDate .
+                FILTER(
+                  ?releaseDate >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+                  ?releaseDate < "2025-02-01T00:00:00Z"^^xsd:dateTime
+                )
+              }}
+              LIMIT 1000
+              """
+              started = time.perf_counter()
+              item_response = requests.post(
+                  endpoint,
+                  data={"query": item_query, "format": "json"},
+                  headers=headers,
+                  timeout=70,
+              )
+              result["item_elapsed_seconds"] = round(time.perf_counter() - started, 3)
+              result["item_status_code"] = item_response.status_code
+              result["item_response_bytes"] = len(item_response.content)
+              item_response.raise_for_status()
+              item_payload = item_response.json()
+              item_bindings = item_payload.get("results", {}).get("bindings", [])
+              result["item_count"] = len(item_bindings)
+              result["item_hit_limit"] = len(item_bindings) == 1000
+              result["success"] = True
           except Exception as exc:
-              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
+              result["success"] = False
               result["exception_type"] = type(exc).__name__
               result["exception"] = str(exc)[:500]
 
-          target = Path("probe-results/wdqs-series-classes.json")
+          target = Path("probe-results/wdqs-cached-classes.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -91,15 +122,15 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: wdqs-series-classes-diagnostic
-          path: probe-results/wdqs-series-classes.json
+          name: wdqs-cached-classes-diagnostic
+          path: probe-results/wdqs-cached-classes.json
       - name: Save diagnostic on feature branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/wdqs-series-classes.json
+          git add probe-results/wdqs-cached-classes.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record series class hierarchy diagnostic"
+          git commit -m "test: record cached-class WDQS diagnostic"
           git push
