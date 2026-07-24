@@ -3,5 +3,5 @@
   "python": "3.12",
   "status": "failed",
   "verification_exit_code": 1,
-  "verification_log_tail": "......................................................................   [100%]\n70 passed in 0.96s\nAll checks passed!\n32 files already formatted\nbuilder/src/media_catalog_builder/package.py:93: error: Argument 2 to \"_copy_to_archive\" has incompatible type \"IO[bytes]\"; expected \"BinaryIO\"  [arg-type]\nFound 1 error in 1 file (checked 15 source files)\n"
+  "verification_log_tail": "......................................................................   [100%]\n70 passed in 0.58s\nAll checks passed!\n32 files already formatted\nbuilder/src/media_catalog_builder/package.py:93: error: Argument 2 to \"_copy_to_archive\" has incompatible type \"IO[bytes]\"; expected \"BinaryIO\"  [arg-type]\nFound 1 error in 1 file (checked 15 source files)\n"
 }
