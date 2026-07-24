@@ -40,9 +40,7 @@ def test_non_latin_without_english_uses_spanish_latin_fallback():
 
 
 def test_record_without_usable_latin_output_is_rejected():
-    result = to_catalog_record(
-        SourceRecord(4, MediaType.MOVIE, 2020, ("千と千尋",), None, None)
-    )
+    result = to_catalog_record(SourceRecord(4, MediaType.MOVIE, 2020, ("千と千尋",), None, None))
     assert result is None
 
 
