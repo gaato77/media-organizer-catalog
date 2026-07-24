@@ -7,7 +7,6 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
-from typing import TypeAlias
 
 _DELTA_SCHEMA = Path(__file__).resolve().parents[3] / "schema" / "delta-schema-v1.sql"
 _REQUIRED_DELTA_META = frozenset(
@@ -21,7 +20,7 @@ _REQUIRED_DELTA_META = frozenset(
         "target_header_fields",
     }
 )
-WorkRow: TypeAlias = tuple[int, int, int, str, tuple[tuple[str, int], ...]]
+type WorkRow = tuple[int, int, int, str, tuple[tuple[str, int], ...]]
 
 
 @dataclass(frozen=True, slots=True)
