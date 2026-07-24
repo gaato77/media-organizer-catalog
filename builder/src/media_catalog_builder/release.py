@@ -36,10 +36,7 @@ def _merge_source_records(records: Sequence[SourceRecord]) -> SourceRecord:
     if not records:
         raise ValueError("source record group cannot be empty")
     originals = {
-        title.strip()
-        for record in records
-        for title in record.original_titles
-        if title.strip()
+        title.strip() for record in records for title in record.original_titles if title.strip()
     }
     modified_values = [record.modified_at for record in records if record.modified_at]
     return SourceRecord(
