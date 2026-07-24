@@ -10,6 +10,7 @@ from typing import Any, Protocol, cast
 
 from media_catalog_builder.classify import Binding, binding_to_source, parse_qid
 from media_catalog_builder.model import MediaType, SourceRecord
+from media_catalog_builder.names import catalog_skip_reason
 
 _ROOTS: dict[MediaType, tuple[str, ...]] = {
     MediaType.MOVIE: ("Q11424",),
@@ -132,6 +133,26 @@ ORDER BY ?item
 """
 
 
+def build_alias_query(item_qids: Sequence[str]) -> str:
+    items = " ".join(f"wd:{qid}" for qid in _validated_qids(item_qids))
+    return f"""PREFIX wd: <http://www.wikidata.org/entity/>
+PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+
+SELECT
+  ?item
+  (GROUP_CONCAT(DISTINCT STR(?alias); separator="\\u001F") AS ?aliases)
+WHERE {{
+  VALUES ?item {{ {items} }}
+  OPTIONAL {{
+    ?item skos:altLabel ?alias .
+    FILTER(LANG(?alias) IN ("en", "es"))
+  }}
+}}
+GROUP BY ?item
+ORDER BY ?item
+"""
+
+
 def _read_payload(path: Path) -> dict[str, Any]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(payload, dict):
@@ -236,6 +257,63 @@ def _binding_qids(payload: Mapping[str, Any]) -> tuple[str, ...]:
         if numeric_qid is not None:
             qids.append(f"Q{numeric_qid}")
     return tuple(sorted(set(qids), key=lambda value: int(value[1:])))
+
+
+def _split_values(value: str | None) -> tuple[str, ...]:
+    if not value:
+        return ()
+    result: list[str] = []
+    seen: set[str] = set()
+    for item in value.split(_SEPARATOR):
+        cleaned = item.strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            result.append(cleaned)
+    return tuple(result)
+
+
+def _extract_aliases(payload: Mapping[str, Any]) -> dict[str, tuple[str, ...]]:
+    aliases: dict[str, tuple[str, ...]] = {}
+    for binding in _extract_bindings(payload):
+        item = binding.get("item")
+        item_value = item.get("value") if item is not None else None
+        numeric_qid = parse_qid(item_value) if item_value is not None else None
+        if numeric_qid is None:
+            continue
+        alias_entry = binding.get("aliases")
+        alias_value = alias_entry.get("value") if alias_entry is not None else None
+        aliases[f"Q{numeric_qid}"] = _split_values(alias_value)
+    return aliases
+
+
+def _payload_with_aliases(
+    payload: Mapping[str, Any],
+    aliases: Mapping[str, tuple[str, ...]],
+) -> dict[str, Any]:
+    enriched: list[Binding] = []
+    for binding in _extract_bindings(payload):
+        mutable: dict[str, Mapping[str, str]] = {
+            key: dict(value) for key, value in binding.items()
+        }
+        item = binding.get("item")
+        item_value = item.get("value") if item is not None else None
+        numeric_qid = parse_qid(item_value) if item_value is not None else None
+        values = aliases.get(f"Q{numeric_qid}") if numeric_qid is not None else None
+        if values:
+            mutable["aliases"] = {"type": "literal", "value": _SEPARATOR.join(values)}
+        enriched.append(mutable)
+    return _payload_for_bindings(enriched)
+
+
+def _records_from_payload(
+    payload: Mapping[str, Any], media_type: MediaType
+) -> list[SourceRecord]:
+    records: list[SourceRecord] = []
+    for binding in _extract_bindings(payload):
+        record = binding_to_source(binding, media_type)
+        if record is not None:
+            records.append(record)
+    return sorted(records, key=lambda record: record.qid)
 
 
 class WikidataSource:
@@ -369,6 +447,42 @@ class WikidataSource:
         _write_payload_atomic(cache_path, final_payload)
         return final_payload
 
+    def _fetch_aliases(
+        self,
+        item_qids: Sequence[str],
+        cache_path: Path,
+    ) -> dict[str, tuple[str, ...]]:
+        validated_qids = _validated_qids(item_qids) if item_qids else ()
+        batch_directory = cache_path.parent / f"{cache_path.stem}-aliases"
+        batch_directory.mkdir(parents=True, exist_ok=True)
+        result: dict[str, tuple[str, ...]] = {}
+
+        for batch_number, start_index in enumerate(
+            range(0, len(validated_qids), self._detail_batch_size),
+            start=1,
+        ):
+            batch_qids = validated_qids[start_index : start_index + self._detail_batch_size]
+            batch_path = batch_directory / f"batch-{batch_number:06d}.json"
+            payload: dict[str, Any]
+            if batch_path.exists():
+                cached_payload = _read_payload(batch_path)
+                if _binding_qids(cached_payload) == batch_qids:
+                    payload = cached_payload
+                else:
+                    payload = self._http.post_json(
+                        self._endpoint,
+                        {"query": build_alias_query(batch_qids), "format": "json"},
+                    )
+                    _write_payload_atomic(batch_path, payload)
+            else:
+                payload = self._http.post_json(
+                    self._endpoint,
+                    {"query": build_alias_query(batch_qids), "format": "json"},
+                )
+                _write_payload_atomic(batch_path, payload)
+            result.update(_extract_aliases(payload))
+        return result
+
     def fetch_interval(
         self,
         media_type: MediaType,
@@ -409,9 +523,17 @@ class WikidataSource:
             )[:limit]
             payload = self._fetch_details(selected_qids, cache_path)
 
-        records: list[SourceRecord] = []
-        for binding in _extract_bindings(payload):
-            record = binding_to_source(binding, media_type)
-            if record is not None:
-                records.append(record)
-        return sorted(records, key=lambda record: record.qid)
+        records = _records_from_payload(payload, media_type)
+        skipped_qids = tuple(
+            f"Q{record.qid}"
+            for record in records
+            if not record.alternate_titles and catalog_skip_reason(record) is not None
+        )
+        if skipped_qids:
+            aliases = self._fetch_aliases(skipped_qids, cache_path)
+            enriched_payload = _payload_with_aliases(payload, aliases)
+            if enriched_payload != payload:
+                payload = enriched_payload
+                _write_payload_atomic(cache_path, payload)
+                records = _records_from_payload(payload, media_type)
+        return records
