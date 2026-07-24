@@ -59,23 +59,26 @@ def build_skip_audit(records: Sequence[SourceRecord]) -> dict[str, object]:
     audited: list[dict[str, object]] = []
     by_baseline_reason: dict[str, int] = {}
     by_remaining_reason: dict[str, int] = {}
-    recovered_records = 0
+    recovered_qids: list[str] = []
+    remaining_qids_by_reason: dict[str, list[str]] = {}
 
     for source in sorted(records, key=lambda record: record.qid):
         baseline = replace(source, alternate_titles=())
         baseline_reason = catalog_skip_reason(baseline)
         if baseline_reason is None:
             continue
+        qid = f"Q{source.qid}"
         by_baseline_reason[baseline_reason] = by_baseline_reason.get(baseline_reason, 0) + 1
         remaining_reason = catalog_skip_reason(source)
         status = "recovered" if remaining_reason is None else "skipped"
         if remaining_reason is None:
-            recovered_records += 1
+            recovered_qids.append(qid)
         else:
             by_remaining_reason[remaining_reason] = by_remaining_reason.get(remaining_reason, 0) + 1
+            remaining_qids_by_reason.setdefault(remaining_reason, []).append(qid)
         audited.append(
             {
-                "qid": f"Q{source.qid}",
+                "qid": qid,
                 "media_type": source.media_type.name.lower(),
                 "year": source.year,
                 "baseline_reason": baseline_reason,
@@ -89,11 +92,16 @@ def build_skip_audit(records: Sequence[SourceRecord]) -> dict[str, object]:
         )
 
     baseline_skipped = len(audited)
+    recovered_records = len(recovered_qids)
     remaining_skipped = baseline_skipped - recovered_records
     return {
         "baseline_skipped_records": baseline_skipped,
         "recovered_records": recovered_records,
         "remaining_skipped_records": remaining_skipped,
+        "recovered_qids": recovered_qids,
+        "remaining_qids_by_reason": {
+            reason: qids for reason, qids in sorted(remaining_qids_by_reason.items())
+        },
         "by_baseline_reason": dict(sorted(by_baseline_reason.items())),
         "by_remaining_reason": dict(sorted(by_remaining_reason.items())),
         "records": audited,
@@ -175,6 +183,7 @@ def build_probe_release(
         "skipped_records": stats.skipped_records,
         "baseline_skipped_records": skip_audit["baseline_skipped_records"],
         "recovered_records": skip_audit["recovered_records"],
+        "recovered_qids": skip_audit["recovered_qids"],
         "remaining_skipped_records": skip_audit["remaining_skipped_records"],
         "by_remaining_reason": skip_audit["by_remaining_reason"],
         "database_bytes": stats.database_bytes,
