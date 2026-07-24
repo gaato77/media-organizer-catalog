@@ -36,9 +36,7 @@ def test_binding_to_source_reads_grouped_titles_and_year():
 
 
 def test_binding_to_source_rejects_missing_or_invalid_year():
-    missing = {
-        "item": {"type": "uri", "value": "http://www.wikidata.org/entity/Q42"}
-    }
+    missing = {"item": {"type": "uri", "value": "http://www.wikidata.org/entity/Q42"}}
     invalid = {
         **missing,
         "releaseDate": _value("not-a-date"),
