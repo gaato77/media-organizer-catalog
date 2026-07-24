@@ -488,8 +488,8 @@ class WikidataSource:
         *,
         limit: int,
     ) -> list[SourceRecord]:
-        if not 1 <= limit <= 1000:
-            raise ValueError("limit must be between 1 and 1000")
+        if not 1 <= limit <= 5000:
+            raise ValueError("limit must be between 1 and 5000")
 
         if cache_path.exists():
             payload = _read_payload(cache_path)
