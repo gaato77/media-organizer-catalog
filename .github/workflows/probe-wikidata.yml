@@ -178,6 +178,7 @@ jobs:
             probe-release
             probe-release-work/catalog.sqlite
             probe-release-work/lookup-cases.json
+            probe-release-work/skip-audit.json
             probe-release-summary.json
             verification.log
             probe.log
