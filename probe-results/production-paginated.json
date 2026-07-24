@@ -1,9 +1,49 @@
 {
-  "package_exit_code": 1,
-  "package_log_tail": "Traceback (most recent call last):\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 31, in _load_cached_records\n    payload = json.loads(path.read_text(encoding=\"utf-8\"))\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'probe-output/movie.json'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<stdin>\", line 9, in <module>\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 138, in build_probe_release\n    *_load_cached_records(probe_dir / \"movie.json\", MediaType.MOVIE),\n     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 33, in _load_cached_records\n    raise ValueError(f\"invalid probe cache: {path.name}\") from exc\nValueError: invalid probe cache: movie.json\n",
-  "probe_exit_code": null,
+  "monthly_release": {
+    "baseline_skipped_records": 137,
+    "by_remaining_reason": {
+      "missing_titles": 127,
+      "non_latin_titles_only": 9
+    },
+    "catalog_records": 881,
+    "compressed_bytes": 68767,
+    "database_bytes": 163840,
+    "recovered_records": 1,
+    "release_files": [
+      "catalog-full-2026.07.24.sqlite.zip",
+      "checksums.sha256",
+      "manifest.json"
+    ],
+    "remaining_skipped_records": 136,
+    "skip_audit_file": "skip-audit.json",
+    "skipped_records": 136,
+    "source_records": 1017
+  },
+  "package_exit_code": 0,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................................ [ 76%]\n......................                                                   [100%]\n94 passed in 1.26s\nAll checks passed!\nunformatted: File would be reformatted\n   --> builder/src/media_catalog_builder/wikidata.py:1:1\n    |\n294 |     for binding in _extract_bindings(payload):\n    -         mutable: dict[str, Mapping[str, str]] = {\n    -             key: dict(value) for key, value in binding.items()\n    -         }\n295 +         mutable: dict[str, Mapping[str, str]] = {key: dict(value) for key, value in binding.items()}\n296 |         item = binding.get(\"item\")\n--------------------------------------------------------------------------------\n305 |\n    - def _records_from_payload(\n    -     payload: Mapping[str, Any], media_type: MediaType\n    - ) -> list[SourceRecord]:\n306 + def _records_from_payload(payload: Mapping[str, Any], media_type: MediaType) -> list[SourceRecord]:\n307 |     records: list[SourceRecord] = []\n    |\n\n1 file would be reformatted, 37 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 1000,
+    "results": [
+      {
+        "cache_bytes": 418416,
+        "elapsed_seconds": 38.998,
+        "media_type": "movie",
+        "records": 985
+      },
+      {
+        "cache_bytes": 12755,
+        "elapsed_seconds": 1.974,
+        "media_type": "series",
+        "records": 32
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 431171,
+    "total_records": 1017
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................................ [ 76%]\n......................                                                   [100%]\n94 passed in 0.95s\nAll checks passed!\n38 files already formatted\nSuccess: no issues found in 17 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
