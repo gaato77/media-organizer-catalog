@@ -1,49 +1,9 @@
 {
-  "monthly_release": {
-    "baseline_skipped_records": 137,
-    "by_remaining_reason": {
-      "missing_titles": 127,
-      "non_latin_titles_only": 9
-    },
-    "catalog_records": 881,
-    "compressed_bytes": 68767,
-    "database_bytes": 163840,
-    "recovered_records": 1,
-    "release_files": [
-      "catalog-full-2026.07.24.sqlite.zip",
-      "checksums.sha256",
-      "manifest.json"
-    ],
-    "remaining_skipped_records": 136,
-    "skip_audit_file": "skip-audit.json",
-    "skipped_records": 136,
-    "source_records": 1017
-  },
-  "package_exit_code": 0,
-  "probe_exit_code": 0,
+  "package_exit_code": 1,
+  "package_log_tail": "Traceback (most recent call last):\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 31, in _load_cached_records\n    payload = json.loads(path.read_text(encoding=\"utf-8\"))\n                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1027, in read_text\n    with self.open(mode='r', encoding=encoding, errors=errors) as f:\n         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/pathlib.py\", line 1013, in open\n    return io.open(self, mode, buffering, encoding, errors, newline)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nFileNotFoundError: [Errno 2] No such file or directory: 'probe-output/movie.json'\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"<stdin>\", line 9, in <module>\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 138, in build_probe_release\n    *_load_cached_records(probe_dir / \"movie.json\", MediaType.MOVIE),\n     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/probe_release.py\", line 33, in _load_cached_records\n    raise ValueError(f\"invalid probe cache: {path.name}\") from exc\nValueError: invalid probe cache: movie.json\n",
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 1000,
-    "results": [
-      {
-        "cache_bytes": 418416,
-        "elapsed_seconds": 38.998,
-        "media_type": "movie",
-        "records": 985
-      },
-      {
-        "cache_bytes": 12755,
-        "elapsed_seconds": 1.974,
-        "media_type": "series",
-        "records": 32
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 431171,
-    "total_records": 1017
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "........................................................................ [ 76%]\n......................                                                   [100%]\n94 passed in 0.95s\nAll checks passed!\n38 files already formatted\nSuccess: no issues found in 17 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": "........................................................................ [ 76%]\n.......F..............                                                   [100%]\n=================================== FAILURES ===================================\n____________ test_skip_audit_counts_recovered_and_remaining_records ____________\n\n    def test_skip_audit_counts_recovered_and_remaining_records() -> None:\n        records = [\n            SourceRecord(1, MediaType.MOVIE, 2025, (), None, None),\n            SourceRecord(2, MediaType.MOVIE, 2025, (\"映画\",), None, None),\n            SourceRecord(\n                3,\n                MediaType.SERIES,\n                2025,\n                (\"ドラマ\",),\n                None,\n                None,\n                alternate_titles=(\"Romanized Drama\",),\n            ),\n            SourceRecord(4, MediaType.MOVIE, 2025, (\"Already Latin\",), None, None),\n        ]\n    \n        report = build_skip_audit(records)\n    \n        assert report[\"baseline_skipped_records\"] == 3\n        assert report[\"recovered_records\"] == 1\n        assert report[\"remaining_skipped_records\"] == 2\n>       assert report[\"recovered_qids\"] == [\"Q3\"]\n               ^^^^^^^^^^^^^^^^^^^^^^^^\nE       KeyError: 'recovered_qids'\n\nbuilder/tests/test_title_recovery.py:157: KeyError\n=========================== short test summary info ============================\nFAILED builder/tests/test_title_recovery.py::test_skip_audit_counts_recovered_and_remaining_records - KeyError: 'recovered_qids'\n1 failed, 93 passed in 1.17s\n"
 }
