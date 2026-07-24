@@ -12,12 +12,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _coerce_exit_code(code: str | int | None) -> int:
+    if isinstance(code, int):
+        return code
+    if code is None:
+        return 0
+    return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = build_parser()
     try:
         parser.parse_args(argv)
     except SystemExit as exc:
-        return int(exc.code)
+        return _coerce_exit_code(exc.code)
     return 0
 
 
