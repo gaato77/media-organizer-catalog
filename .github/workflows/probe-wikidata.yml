@@ -1,4 +1,4 @@
-# Atomic release assembly checkpoint verification — final rerun
+# Complete January 2025 end-to-end catalog source verification
 name: Production catalog source probe
 
 on:
@@ -18,7 +18,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -45,7 +45,7 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Run paginated production probe
+      - name: Run complete January 2025 production probe
         id: catalog_probe
         if: steps.verify.outputs.exit_code == '0'
         shell: bash
@@ -56,7 +56,7 @@ jobs:
             --output-dir probe-output \
             --start 2025-01-01T00:00:00Z \
             --end 2025-02-01T00:00:00Z \
-            --limit 25 > probe.log 2>&1
+            --limit 1000 > probe.log 2>&1
           status=$?
           cat probe.log
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
@@ -128,7 +128,7 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record atomic release assembly checkpoint"
+          git commit -m "test: record complete January production probe"
           git push
 
       - name: Enforce successful verification and probe
