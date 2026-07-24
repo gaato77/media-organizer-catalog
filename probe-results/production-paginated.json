@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "...............................................                          [100%]\n47 passed in 0.52s\nAll checks passed!\nunformatted: File would be reformatted\n   --> builder/tests/test_wikidata.py:1:1\n    |\n144 |             \"Q30\",\n    -             \"http://www.wikidata.org/entity/Q11424,\"\n    -             \"http://www.wikidata.org/entity/Q5398426\",\n145 +             \"http://www.wikidata.org/entity/Q11424,http://www.wikidata.org/entity/Q5398426\",\n146 |         ),\n--------------------------------------------------------------------------------\n191 |     candidate_calls = [\n    -         call\n    -         for call in http.calls\n    -         if \"GROUP_CONCAT(DISTINCT STR(?class)\" in call[2][\"query\"]\n192 +         call for call in http.calls if \"GROUP_CONCAT(DISTINCT STR(?class)\" in call[2][\"query\"]\n193 |     ]\n--------------------------------------------------------------------------------\n197 |     assert \"VALUES ?item { wd:Q20 wd:Q30 }\" in http.calls[5][2][\"query\"]\n    -     assert (\n    -         tmp_path / \"source-candidates-20010101T000000Z-20010201T000000Z\"\n    -     ).is_dir()\n198 +     assert (tmp_path / \"source-candidates-20010101T000000Z-20010201T000000Z\").is_dir()\n199 |     assert list(tmp_path.rglob(\"*.tmp\")) == []\n--------------------------------------------------------------------------------\n218 |     page_dir.mkdir()\n    -     (page_dir / \"page-000001.json\").write_text(\n    -         json.dumps(candidates), encoding=\"utf-8\"\n    -     )\n    -     (page_dir / \"page-000002.json\").write_text(\n    -         json.dumps(_candidate_payload()), encoding=\"utf-8\"\n    -     )\n    -     (tmp_path / \"movie-classes.json\").write_text(\n    -         json.dumps(movie_classes), encoding=\"utf-8\"\n    -     )\n    -     (tmp_path / \"series-classes.json\").write_text(\n    -         json.dumps(series_classes), encoding=\"utf-8\"\n    -     )\n219 +     (page_dir / \"page-000001.json\").write_text(json.dumps(candidates), encoding=\"utf-8\")\n220 +     (page_dir / \"page-000002.json\").write_text(json.dumps(_candidate_payload()), encoding=\"utf-8\")\n221 +     (tmp_path / \"movie-classes.json\").write_text(json.dumps(movie_classes), encoding=\"utf-8\")\n222 +     (tmp_path / \"series-classes.json\").write_text(json.dumps(series_classes), encoding=\"utf-8\")\n223 |     batch_dir = tmp_path / \"movie-details\"\n224 |     batch_dir.mkdir()\n    -     (batch_dir / \"batch-000001.json\").write_text(\n    -         json.dumps(first_batch), encoding=\"utf-8\"\n    -     )\n225 +     (batch_dir / \"batch-000001.json\").write_text(json.dumps(first_batch), encoding=\"utf-8\")\n226 |     http = FakeHttp([second_batch])\n    |\n\n1 file would be reformatted, 21 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 73.861,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 0.864,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "...............................................                          [100%]\n47 passed in 0.58s\nAll checks passed!\n22 files already formatted\nSuccess: no issues found in 11 source files\n"
 }
