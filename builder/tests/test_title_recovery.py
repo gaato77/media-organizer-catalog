@@ -5,10 +5,14 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from media_catalog_builder.database import CatalogDatabase
 from media_catalog_builder.model import MediaType, SourceRecord
 from media_catalog_builder.names import catalog_skip_reason, to_catalog_record
 from media_catalog_builder.probe_release import build_skip_audit
+from media_catalog_builder.release import build_database_from_sources
 from media_catalog_builder.wikidata import WikidataSource, build_alias_query
+
+ROOT = Path(__file__).resolve().parents[2]
 
 
 class FakeHttp:
@@ -158,3 +162,29 @@ def test_skip_audit_counts_recovered_and_remaining_records() -> None:
     assert isinstance(audited, list)
     assert [entry["qid"] for entry in audited] == ["Q1", "Q2", "Q3"]
     assert audited[-1]["status"] == "recovered"
+
+
+def test_database_build_preserves_alias_fallback(tmp_path: Path) -> None:
+    output = tmp_path / "catalog.sqlite"
+    stats = build_database_from_sources(
+        [
+            SourceRecord(
+                10,
+                MediaType.MOVIE,
+                2025,
+                ("映画",),
+                None,
+                None,
+                alternate_titles=("Romanized Movie",),
+            )
+        ],
+        output,
+        version="2026.07.24",
+        now=datetime(2026, 7, 24, tzinfo=UTC),
+        schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
+    )
+
+    assert stats.catalog_records == 1
+    with CatalogDatabase.open(output, readonly=True) as database:
+        results = database.lookup("Romanized Movie", year=2025, media_type=MediaType.MOVIE)
+    assert [result.canonical_title for result in results] == ["Romanized Movie"]
