@@ -1,0 +1,15 @@
+{
+  "class_count": 218,
+  "class_elapsed_seconds": 0.137,
+  "class_hit_limit": false,
+  "class_status_code": 200,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "item_count": 32,
+  "item_elapsed_seconds": 4.199,
+  "item_hit_limit": false,
+  "item_response_bytes": 9316,
+  "item_status_code": 200,
+  "query_shape": "cached class closure followed by exact P31 VALUES",
+  "request_method": "POST",
+  "success": true
+}
