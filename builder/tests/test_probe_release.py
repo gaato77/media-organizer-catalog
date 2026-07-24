@@ -1,0 +1,71 @@
+from __future__ import annotations
+
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+
+from media_catalog_builder.config import CatalogConfig
+from media_catalog_builder.probe_release import build_probe_release
+from media_catalog_builder.release import validate_release
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _payload(qid: int, release_date: str, title: str) -> dict[str, object]:
+    return {
+        "results": {
+            "bindings": [
+                {
+                    "item": {
+                        "type": "uri",
+                        "value": f"http://www.wikidata.org/entity/Q{qid}",
+                    },
+                    "releaseDate": {"type": "literal", "value": release_date},
+                    "originals": {"type": "literal", "value": title},
+                    "enLabel": {"type": "literal", "value": title},
+                }
+            ]
+        }
+    }
+
+
+def test_probe_release_builds_and_validates_complete_package(tmp_path: Path) -> None:
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "movie.json").write_text(
+        json.dumps(_payload(10, "2025-01-10T00:00:00Z", "January Movie")),
+        encoding="utf-8",
+    )
+    (probe_dir / "series.json").write_text(
+        json.dumps(_payload(20, "2025-01-20T00:00:00Z", "January Series")),
+        encoding="utf-8",
+    )
+    config = CatalogConfig.load(ROOT / "builder" / "config" / "catalog.toml")
+    release_dir = tmp_path / "release"
+
+    summary = build_probe_release(
+        probe_dir,
+        tmp_path / "work",
+        release_dir,
+        config=config,
+        schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
+        version="2026.07.24",
+        published_at=datetime(2026, 7, 24, 22, 45, tzinfo=UTC),
+        minimum_app_version="0.1.0",
+    )
+
+    assert summary["source_records"] == 2
+    assert summary["catalog_records"] == 2
+    assert summary["skipped_records"] == 0
+    assert summary["release_files"] == [
+        "catalog-full-2026.07.24.sqlite.zip",
+        "checksums.sha256",
+        "manifest.json",
+    ]
+    manifest = validate_release(
+        release_dir,
+        config=config,
+        lookup_cases_path=tmp_path / "work" / "lookup-cases.json",
+    )
+    assert manifest.catalog_version == "2026.07.24"
+    assert manifest.full.installed_bytes == summary["database_bytes"]
