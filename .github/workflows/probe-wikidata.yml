@@ -1,4 +1,4 @@
-# Complete January 2025 end-to-end catalog source verification
+# Complete January 2025 source and release-package verification
 name: Production catalog source probe
 
 on:
@@ -62,10 +62,48 @@ jobs:
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
           exit 0
 
+      - name: Build and validate monthly release package
+        id: package_probe
+        if: steps.catalog_probe.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY' > package.log 2>&1
+          import json
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from media_catalog_builder.config import CatalogConfig
+          from media_catalog_builder.probe_release import build_probe_release
+
+          config = CatalogConfig.load(Path("builder/config/catalog.toml"))
+          summary = build_probe_release(
+              Path("probe-output"),
+              Path("probe-release-work"),
+              Path("probe-release"),
+              config=config,
+              schema_path=Path("schema/catalog-schema-v1.sql"),
+              version="2026.07.24",
+              published_at=datetime(2026, 7, 24, 23, 0, tzinfo=UTC),
+              minimum_app_version="0.1.0",
+          )
+          target = Path("probe-release-summary.json")
+          target.write_text(
+              json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(target.read_text(encoding="utf-8"))
+          PY
+          status=$?
+          cat package.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Build reviewable result
         env:
           VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
           PROBE_EXIT_CODE: ${{ steps.catalog_probe.outputs.exit_code }}
+          PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}
         run: |
           python - <<'PY'
           import json
@@ -75,11 +113,18 @@ jobs:
           verify_code = int(os.environ.get("VERIFY_EXIT_CODE") or 1)
           probe_value = os.environ.get("PROBE_EXIT_CODE")
           probe_code = int(probe_value) if probe_value else None
+          package_value = os.environ.get("PACKAGE_EXIT_CODE")
+          package_code = int(package_value) if package_value else None
           result = {
               "python": "3.12",
               "verification_exit_code": verify_code,
               "probe_exit_code": probe_code,
-              "status": "success" if verify_code == 0 and probe_code == 0 else "failed",
+              "package_exit_code": package_code,
+              "status": (
+                  "success"
+                  if verify_code == 0 and probe_code == 0 and package_code == 0
+                  else "failed"
+              ),
           }
 
           verification_log = Path("verification.log")
@@ -95,6 +140,18 @@ jobs:
               probe_log = Path("probe.log")
               if probe_log.exists():
                   result["probe_log_tail"] = probe_log.read_text(
+                      encoding="utf-8", errors="replace"
+                  )[-4000:]
+
+          release_summary = Path("probe-release-summary.json")
+          if release_summary.exists():
+              result["monthly_release"] = json.loads(
+                  release_summary.read_text(encoding="utf-8")
+              )
+          else:
+              package_log = Path("package.log")
+              if package_log.exists():
+                  result["package_log_tail"] = package_log.read_text(
                       encoding="utf-8", errors="replace"
                   )[-4000:]
 
@@ -114,8 +171,13 @@ jobs:
           path: |
             build/sample.sqlite
             probe-output
+            probe-release
+            probe-release-work/catalog.sqlite
+            probe-release-work/lookup-cases.json
+            probe-release-summary.json
             verification.log
             probe.log
+            package.log
             probe-results/production-paginated.json
           if-no-files-found: warn
 
@@ -128,14 +190,16 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record complete January production probe"
+          git commit -m "test: record January package checkpoint"
           git push
 
-      - name: Enforce successful verification and probe
+      - name: Enforce successful verification, probe, and package
         if: always()
         env:
           VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
           PROBE_EXIT_CODE: ${{ steps.catalog_probe.outputs.exit_code }}
+          PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}
         run: |
           test "${VERIFY_EXIT_CODE:-1}" = "0"
           test "${PROBE_EXIT_CODE:-1}" = "0"
+          test "${PACKAGE_EXIT_CODE:-1}" = "0"
