@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/gaato77/media-organizer-catalog/schema/manifest-schema-v1.json",
+  "title": "Media Organizer Catalog Manifest v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "manifest_schema",
+    "catalog_schema",
+    "catalog_version",
+    "published_at",
+    "minimum_app_version",
+    "full",
+    "deltas"
+  ],
+  "properties": {
+    "manifest_schema": {"const": 1},
+    "catalog_schema": {"const": 1},
+    "catalog_version": {
+      "type": "string",
+      "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$"
+    },
+    "published_at": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "Z$"
+    },
+    "minimum_app_version": {"type": "string", "minLength": 1},
+    "full": {"$ref": "#/$defs/asset"},
+    "deltas": {
+      "type": "array",
+      "maxItems": 8,
+      "items": {"$ref": "#/$defs/delta"}
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "safeName": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": "^[^/\\\\\\u0000]+$"
+    },
+    "asset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "download_bytes", "installed_bytes", "sha256"],
+      "properties": {
+        "name": {"$ref": "#/$defs/safeName"},
+        "download_bytes": {"type": "integer", "minimum": 1},
+        "installed_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    },
+    "delta": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "from_version",
+        "to_version",
+        "name",
+        "download_bytes",
+        "installed_bytes",
+        "sha256"
+      ],
+      "properties": {
+        "from_version": {
+          "type": "string",
+          "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$"
+        },
+        "to_version": {
+          "type": "string",
+          "pattern": "^[0-9]{4}\\.[0-9]{2}\\.[0-9]{2}$"
+        },
+        "name": {"$ref": "#/$defs/safeName"},
+        "download_bytes": {"type": "integer", "minimum": 1},
+        "installed_bytes": {"type": "integer", "minimum": 1},
+        "sha256": {"$ref": "#/$defs/sha256"}
+      }
+    }
+  }
+}
