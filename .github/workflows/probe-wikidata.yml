@@ -7,6 +7,11 @@ on:
       - feature/compact-catalog-builder
     paths:
       - .github/workflows/probe-wikidata.yml
+      - builder/scripts/probe_wikidata.py
+      - builder/src/media_catalog_builder/classify.py
+      - builder/src/media_catalog_builder/http.py
+      - builder/src/media_catalog_builder/probe.py
+      - builder/src/media_catalog_builder/wikidata.py
 
 permissions:
   contents: read
