@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.47s\nAll checks passed!\nunformatted: File would be reformatted\n  --> builder/tests/test_database.py:1:1\n   |\n93 |             connection.execute(\n   -                 \"INSERT INTO names(normalized_name, work_qid, name_rank) \"\n   -                 \"VALUES('fifth', 1, 3)\"\n94 +                 \"INSERT INTO names(normalized_name, work_qid, name_rank) VALUES('fifth', 1, 3)\"\n95 |             )\n   |\n\n1 file would be reformatted, 27 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 161.753,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 1.041,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.40s\nAll checks passed!\n28 files already formatted\nSuccess: no issues found in 13 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
