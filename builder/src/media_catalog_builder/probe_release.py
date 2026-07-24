@@ -4,9 +4,8 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
-from typing import Any
 
-from media_catalog_builder.classify import Binding, binding_to_source
+from media_catalog_builder.classify import binding_to_source
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.model import MediaType, SourceRecord
 from media_catalog_builder.names import to_catalog_record
