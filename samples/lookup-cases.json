@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Amelie",
+    "year": 2001,
+    "media_type": "movie",
+    "canonical_title": "Amélie"
+  },
+  {
+    "name": "Serie de ejemplo",
+    "year": 2020,
+    "media_type": "series",
+    "canonical_title": "Example Series"
+  }
+]
