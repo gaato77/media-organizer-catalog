@@ -1,0 +1,15 @@
+{
+  "binding_count": 19,
+  "content_type": "application/sparql-results+json;charset=utf-8",
+  "elapsed_seconds": 1.749,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "json": true,
+  "query_shape": "exact P31 Q5398426, no subclass path, no labels, no aggregation",
+  "request_method": "POST",
+  "response_bytes": 5572,
+  "status_code": 200,
+  "top_level_keys": [
+    "head",
+    "results"
+  ]
+}
