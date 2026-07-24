@@ -58,8 +58,7 @@ def _logical_rows(path: Path) -> tuple[tuple[object, ...], ...]:
             "SELECT qid, media_type, release_year, canonical_title FROM works ORDER BY qid"
         ).fetchall()
         names = connection.execute(
-            "SELECT normalized_name, work_qid, name_rank "
-            "FROM names ORDER BY work_qid, name_rank"
+            "SELECT normalized_name, work_qid, name_rank FROM names ORDER BY work_qid, name_rank"
         ).fetchall()
         meta = connection.execute("SELECT key, value FROM meta ORDER BY key").fetchall()
     finally:
