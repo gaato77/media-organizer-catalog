@@ -54,6 +54,9 @@ def _merge_source_records(records: Sequence[SourceRecord]) -> SourceRecord:
     originals = {
         title.strip() for record in records for title in record.original_titles if title.strip()
     }
+    alternates = {
+        title.strip() for record in records for title in record.alternate_titles if title.strip()
+    }
     modified_values = [record.modified_at for record in records if record.modified_at]
     return SourceRecord(
         qid=records[0].qid,
@@ -63,6 +66,7 @@ def _merge_source_records(records: Sequence[SourceRecord]) -> SourceRecord:
         english_label=_first_label(records, "english_label"),
         spanish_label=_first_label(records, "spanish_label"),
         modified_at=max(modified_values) if modified_values else None,
+        alternate_titles=tuple(sorted(alternates, key=_text_sort_key)),
     )
 
 
