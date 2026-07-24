@@ -1,0 +1,25 @@
+{
+  "class_count": 218,
+  "content_type": "application/sparql-results+json;charset=utf-8",
+  "elapsed_seconds": 0.246,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "hit_limit": false,
+  "json": true,
+  "limit": 1000,
+  "query_shape": "isolated subclass closure for Q5398426",
+  "request_method": "POST",
+  "response_bytes": 26309,
+  "sample_classes": [
+    "http://www.wikidata.org/entity/Q100707163",
+    "http://www.wikidata.org/entity/Q101071244",
+    "http://www.wikidata.org/entity/Q101716172",
+    "http://www.wikidata.org/entity/Q102245189",
+    "http://www.wikidata.org/entity/Q102430221",
+    "http://www.wikidata.org/entity/Q104123273",
+    "http://www.wikidata.org/entity/Q104438889",
+    "http://www.wikidata.org/entity/Q105971777",
+    "http://www.wikidata.org/entity/Q108674843",
+    "http://www.wikidata.org/entity/Q109788700"
+  ],
+  "status_code": 200
+}
