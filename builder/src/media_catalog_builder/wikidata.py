@@ -165,9 +165,7 @@ def _extract_bindings(payload: Mapping[str, Any]) -> list[Binding]:
         for key, raw_value in raw_binding.items():
             if not isinstance(key, str) or not isinstance(raw_value, Mapping):
                 raise ValueError("Wikidata binding entry is invalid")
-            converted[key] = {
-                str(value_key): str(value) for value_key, value in raw_value.items()
-            }
+            converted[key] = {str(value_key): str(value) for value_key, value in raw_value.items()}
         bindings.append(converted)
     return bindings
 
@@ -326,8 +324,7 @@ class WikidataSource:
             page_number += 1
 
         return tuple(
-            candidates[qid]
-            for qid in sorted(candidates, key=lambda value: int(value[1:]))
+            candidates[qid] for qid in sorted(candidates, key=lambda value: int(value[1:]))
         )
 
     def _fetch_details(
@@ -347,9 +344,7 @@ class WikidataSource:
             range(0, len(validated_qids), self._detail_batch_size),
             start=1,
         ):
-            batch_qids = validated_qids[
-                start_index : start_index + self._detail_batch_size
-            ]
+            batch_qids = validated_qids[start_index : start_index + self._detail_batch_size]
             batch_path = batch_directory / f"batch-{batch_number:06d}.json"
             payload: dict[str, Any]
             if batch_path.exists():
