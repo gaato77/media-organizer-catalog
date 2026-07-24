@@ -1,0 +1,227 @@
+name: Complete 2025 catalog probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/compact-catalog-builder
+    paths:
+      - .github/workflows/probe-wikidata-year.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: complete-2025-catalog-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe-year:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+      - run: python -m pip install -e "builder[test]"
+
+      - name: Restore resumable annual cache
+        id: cache-restore
+        uses: actions/cache/restore@v4
+        with:
+          path: annual-probe-output
+          key: annual-2025-${{ github.sha }}
+          restore-keys: |
+            annual-2025-
+
+      - name: Verify annual probe code
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          {
+            python -m pytest builder/tests -q &&
+            python -m ruff check builder &&
+            python -m ruff format --check builder &&
+            python -m mypy builder/src/media_catalog_builder &&
+            python builder/scripts/smoke_lookup.py
+          } > annual-verification.log 2>&1
+          status=$?
+          cat annual-verification.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run resumable complete 2025 probe
+        id: annual_probe
+        if: steps.verify.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          rm -f \
+            annual-probe-output/summary.json \
+            annual-probe-output/movie.json \
+            annual-probe-output/series.json
+          python builder/scripts/probe_wikidata_year.py \
+            --config builder/config/catalog.toml \
+            --output-dir annual-probe-output \
+            --year 2025 \
+            --limit 5000 > annual-probe.log 2>&1
+          status=$?
+          cat annual-probe.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Save resumable annual cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: annual-probe-output
+          key: annual-2025-${{ github.sha }}
+
+      - name: Build and validate complete 2025 package
+        id: package_probe
+        if: steps.annual_probe.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          rm -rf annual-release annual-release-work
+          python - <<'PY' > annual-package.log 2>&1
+          import json
+          import shutil
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from media_catalog_builder.config import CatalogConfig
+          from media_catalog_builder.probe_release import build_probe_release
+
+          config = CatalogConfig.load(Path("builder/config/catalog.toml"))
+          release_summary = build_probe_release(
+              Path("annual-probe-output"),
+              Path("annual-release-work"),
+              Path("annual-release"),
+              config=config,
+              schema_path=Path("schema/catalog-schema-v1.sql"),
+              version="2026.07.24-year-2025",
+              published_at=datetime(2026, 7, 24, 23, 45, tzinfo=UTC),
+              minimum_app_version="0.1.0",
+          )
+          source_summary = json.loads(
+              Path("annual-probe-output/summary.json").read_text(encoding="utf-8")
+          )
+          combined = {
+              "source": source_summary,
+              "release": release_summary,
+          }
+          Path("annual-release-summary.json").write_text(
+              json.dumps(combined, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          shutil.copyfile(
+              "annual-release-work/skip-audit.json",
+              "annual-skip-audit.json",
+          )
+          print(Path("annual-release-summary.json").read_text(encoding="utf-8"))
+          PY
+          status=$?
+          cat annual-package.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build reviewable annual result
+        if: always()
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          ANNUAL_EXIT_CODE: ${{ steps.annual_probe.outputs.exit_code }}
+          PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          def code(name: str):
+              value = os.environ.get(name)
+              return int(value) if value else None
+
+          verify_code = code("VERIFY_EXIT_CODE")
+          annual_code = code("ANNUAL_EXIT_CODE")
+          package_code = code("PACKAGE_EXIT_CODE")
+          result = {
+              "python": "3.12",
+              "verification_exit_code": verify_code,
+              "annual_probe_exit_code": annual_code,
+              "package_exit_code": package_code,
+              "status": (
+                  "success"
+                  if verify_code == 0 and annual_code == 0 and package_code == 0
+                  else "failed"
+              ),
+          }
+
+          release_summary = Path("annual-release-summary.json")
+          if release_summary.exists():
+              result.update(json.loads(release_summary.read_text(encoding="utf-8")))
+          else:
+              for name in ("annual-verification.log", "annual-probe.log", "annual-package.log"):
+                  path = Path(name)
+                  if path.exists():
+                      result[f"{path.stem}_tail"] = path.read_text(
+                          encoding="utf-8", errors="replace"
+                      )[-6000:]
+
+          target = Path("probe-results/year-2025.json")
+          target.parent.mkdir(parents=True, exist_ok=True)
+          target.write_text(
+              json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          print(target.read_text(encoding="utf-8"))
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: complete-2025-catalog-probe
+          path: |
+            annual-probe-output
+            annual-release
+            annual-release-work/catalog.sqlite
+            annual-release-work/lookup-cases.json
+            annual-release-work/skip-audit.json
+            annual-release-summary.json
+            annual-skip-audit.json
+            annual-verification.log
+            annual-probe.log
+            annual-package.log
+            probe-results/year-2025.json
+          if-no-files-found: warn
+
+      - name: Save annual result on feature branch
+        if: always()
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add probe-results/year-2025.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "test: record complete 2025 catalog probe"
+          git pull --rebase origin feature/compact-catalog-builder
+          git push origin HEAD:feature/compact-catalog-builder
+
+      - name: Enforce successful annual verification and package
+        if: always()
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          ANNUAL_EXIT_CODE: ${{ steps.annual_probe.outputs.exit_code }}
+          PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}
+        run: |
+          test "${VERIFY_EXIT_CODE:-1}" = "0"
+          test "${ANNUAL_EXIT_CODE:-1}" = "0"
+          test "${PACKAGE_EXIT_CODE:-1}" = "0"
