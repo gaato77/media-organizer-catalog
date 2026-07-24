@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................................ [ 83%]\n..............                                                           [100%]\n86 passed in 0.94s\nAll checks passed!\nunformatted: File would be reformatted\n  --> builder/tests/test_tooling.py:1:1\n   |\n31 | def test_production_probe_covers_complete_reference_month() -> None:\n   -     workflow = (ROOT / \".github\" / \"workflows\" / \"probe-wikidata.yml\").read_text(\n   -         encoding=\"utf-8\"\n   -     )\n32 +     workflow = (ROOT / \".github\" / \"workflows\" / \"probe-wikidata.yml\").read_text(encoding=\"utf-8\")\n33 |     assert \"timeout-minutes: 30\" in workflow\n   |\n\n1 file would be reformatted, 34 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 1000,
+    "results": [
+      {
+        "cache_bytes": 418349,
+        "elapsed_seconds": 39.099,
+        "media_type": "movie",
+        "records": 985
+      },
+      {
+        "cache_bytes": 12755,
+        "elapsed_seconds": 0.881,
+        "media_type": "series",
+        "records": 32
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 431104,
+    "total_records": 1017
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................................ [ 83%]\n..............                                                           [100%]\n86 passed in 0.85s\nAll checks passed!\n35 files already formatted\nSuccess: no issues found in 16 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
