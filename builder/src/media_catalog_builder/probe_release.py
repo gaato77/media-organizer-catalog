@@ -38,9 +38,7 @@ def _load_cached_records(path: Path, media_type: MediaType) -> list[SourceRecord
         for key, raw_value in raw_binding.items():
             if not isinstance(key, str) or not isinstance(raw_value, Mapping):
                 raise ValueError(f"invalid probe cache binding: {path.name}")
-            converted[key] = {
-                str(value_key): str(value) for value_key, value in raw_value.items()
-            }
+            converted[key] = {str(value_key): str(value) for value_key, value in raw_value.items()}
         record = binding_to_source(converted, media_type)
         if record is not None:
             records.append(record)
