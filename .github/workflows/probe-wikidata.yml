@@ -1,0 +1,39 @@
+name: Wikidata probe
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/compact-catalog-builder
+    paths:
+      - .github/workflows/probe-wikidata.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+      - run: python -m pip install -e builder
+      - name: Run bounded monthly probe
+        run: |
+          python builder/scripts/probe_wikidata.py \
+            --config builder/config/catalog.toml \
+            --output-dir probe-output \
+            --start 2025-01-01T00:00:00Z \
+            --end 2025-02-01T00:00:00Z \
+            --limit 25
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: wikidata-probe
+          path: probe-output
+          if-no-files-found: warn
