@@ -78,8 +78,7 @@ def test_manifest_rejects_invalid_schema_and_sha256() -> None:
 
 def test_manifest_rejects_more_than_eight_deltas() -> None:
     deltas = tuple(
-        _delta(f"2026.05.{day:02d}", f"2026.05.{day + 1:02d}", 10)
-        for day in range(1, 10)
+        _delta(f"2026.05.{day:02d}", f"2026.05.{day + 1:02d}", 10) for day in range(1, 10)
     )
 
     with pytest.raises(ValueError, match="at most 8"):
