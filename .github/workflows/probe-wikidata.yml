@@ -1,4 +1,4 @@
-name: Two-phase catalog source probe
+name: Chunked movie source probe
 
 on:
   workflow_dispatch:
@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  verify-and-probe:
+  probe:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -29,7 +29,7 @@ jobs:
           python -m ruff check builder
           python -m ruff format --check builder
           python -m mypy builder/src/media_catalog_builder
-      - name: Measure two-phase strategy
+      - name: Measure chunked movie strategy
         run: |
           python - <<'PY'
           import json
@@ -44,14 +44,11 @@ jobs:
               "Accept": "application/sparql-results+json",
               "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
           }
-          roots_by_type = {
-              "movie": ("Q11424",),
-              "series": ("Q5398426", "Q1259759"),
-          }
           result = {
               "endpoint": endpoint,
-              "strategy": "class closure, exact item selection, exact item metadata",
-              "results": [],
+              "media_type": "movie",
+              "class_chunk_size": 200,
+              "chunks": [],
           }
 
           def execute(query):
@@ -66,39 +63,39 @@ jobs:
               response.raise_for_status()
               return response.json(), elapsed, len(response.content)
 
-          for media_type, roots in roots_by_type.items():
-              measurement = {"media_type": media_type}
-              try:
-                  root_values = " ".join(f"wd:{qid}" for qid in roots)
-                  class_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-                  SELECT DISTINCT ?class WHERE {{
-                    VALUES ?root {{ {root_values} }}
-                    ?class wdt:P279* ?root .
-                  }}
-                  ORDER BY ?class
-                  LIMIT 1000
-                  """
-                  class_payload, class_seconds, class_bytes = execute(class_query)
-                  class_bindings = class_payload.get("results", {}).get("bindings", [])
-                  qids = []
-                  for row in class_bindings:
-                      value = row.get("class", {}).get("value", "")
-                      match = re.fullmatch(
-                          r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
-                          value,
-                      )
-                      if match:
-                          qids.append(match.group(1))
-                  qids = sorted(set(qids), key=lambda value: int(value[1:]))
-                  measurement.update(
-                      class_count=len(qids),
-                      class_seconds=class_seconds,
-                      class_bytes=class_bytes,
+          try:
+              class_query = """PREFIX wd: <http://www.wikidata.org/entity/>
+              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+              SELECT DISTINCT ?class WHERE {
+                ?class wdt:P279* wd:Q11424 .
+              }
+              ORDER BY ?class
+              LIMIT 1000
+              """
+              class_payload, class_seconds, class_bytes = execute(class_query)
+              class_bindings = class_payload.get("results", {}).get("bindings", [])
+              qids = []
+              for row in class_bindings:
+                  value = row.get("class", {}).get("value", "")
+                  match = re.fullmatch(
+                      r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
+                      value,
                   )
+                  if match:
+                      qids.append(match.group(1))
+              qids = sorted(set(qids), key=lambda value: int(value[1:]))
+              result.update(
+                  class_count=len(qids),
+                  class_seconds=class_seconds,
+                  class_bytes=class_bytes,
+              )
 
-                  class_values = " ".join(f"wd:{qid}" for qid in qids)
-                  item_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+              items = {}
+              chunk_size = 200
+              for index in range(0, len(qids), chunk_size):
+                  chunk = qids[index : index + chunk_size]
+                  class_values = " ".join(f"wd:{qid}" for qid in chunk)
+                  query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
                   PREFIX wdt: <http://www.wikidata.org/prop/direct/>
                   PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
                   SELECT ?item (MIN(?releaseDateValue) AS ?releaseDate) WHERE {{
@@ -113,61 +110,67 @@ jobs:
                   }}
                   GROUP BY ?item
                   ORDER BY ?item
-                  LIMIT 25
+                  LIMIT 1000
                   """
-                  item_payload, item_seconds, item_bytes = execute(item_query)
-                  item_bindings = item_payload.get("results", {}).get("bindings", [])
-                  item_uris = [
-                      row.get("item", {}).get("value", "")
-                      for row in item_bindings
-                      if row.get("item", {}).get("value")
-                  ]
-                  measurement.update(
-                      item_count=len(item_uris),
-                      item_seconds=item_seconds,
-                      item_bytes=item_bytes,
+                  payload, seconds, response_bytes = execute(query)
+                  bindings = payload.get("results", {}).get("bindings", [])
+                  for row in bindings:
+                      item = row.get("item", {}).get("value")
+                      release_date = row.get("releaseDate", {}).get("value")
+                      if item and release_date:
+                          previous = items.get(item)
+                          items[item] = min(previous, release_date) if previous else release_date
+                  result["chunks"].append(
+                      {
+                          "chunk_number": index // chunk_size + 1,
+                          "class_count": len(chunk),
+                          "item_count": len(bindings),
+                          "hit_limit": len(bindings) == 1000,
+                          "seconds": seconds,
+                          "response_bytes": response_bytes,
+                      }
                   )
+                  time.sleep(1)
 
-                  item_values = " ".join(
-                      f"wd:{uri.rsplit('/', 1)[-1]}" for uri in item_uris
-                  )
-                  detail_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-                  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-                  PREFIX schema: <http://schema.org/>
-                  SELECT ?item
-                    (GROUP_CONCAT(DISTINCT STR(?originalValue); separator="\\u001F") AS ?originals)
-                    (SAMPLE(?enValue) AS ?enLabel)
-                    (SAMPLE(?esValue) AS ?esLabel)
-                    (MAX(?modifiedValue) AS ?modified)
-                  WHERE {{
-                    VALUES ?item {{ {item_values} }}
-                    OPTIONAL {{ ?item wdt:P1476 ?originalValue . }}
-                    OPTIONAL {{ ?item rdfs:label ?enValue . FILTER(LANG(?enValue) = "en") }}
-                    OPTIONAL {{ ?item rdfs:label ?esValue . FILTER(LANG(?esValue) = "es") }}
-                    OPTIONAL {{ ?item schema:dateModified ?modifiedValue . }}
-                  }}
-                  GROUP BY ?item
-                  ORDER BY ?item
-                  """
-                  detail_payload, detail_seconds, detail_bytes = execute(detail_query)
-                  detail_bindings = detail_payload.get("results", {}).get("bindings", [])
-                  measurement.update(
-                      detail_count=len(detail_bindings),
-                      detail_seconds=detail_seconds,
-                      detail_bytes=detail_bytes,
-                      success=len(detail_bindings) == len(item_uris),
-                  )
-              except Exception as exc:
-                  measurement.update(
-                      success=False,
-                      exception_type=type(exc).__name__,
-                      exception=str(exc)[:500],
-                  )
-              result["results"].append(measurement)
+              item_values = " ".join(
+                  f"wd:{uri.rsplit('/', 1)[-1]}" for uri in sorted(items)
+              )
+              detail_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+              PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+              PREFIX schema: <http://schema.org/>
+              SELECT ?item
+                (GROUP_CONCAT(DISTINCT STR(?originalValue); separator="\\u001F") AS ?originals)
+                (SAMPLE(?enValue) AS ?enLabel)
+                (SAMPLE(?esValue) AS ?esLabel)
+                (MAX(?modifiedValue) AS ?modified)
+              WHERE {{
+                VALUES ?item {{ {item_values} }}
+                OPTIONAL {{ ?item wdt:P1476 ?originalValue . }}
+                OPTIONAL {{ ?item rdfs:label ?enValue . FILTER(LANG(?enValue) = "en") }}
+                OPTIONAL {{ ?item rdfs:label ?esValue . FILTER(LANG(?esValue) = "es") }}
+                OPTIONAL {{ ?item schema:dateModified ?modifiedValue . }}
+              }}
+              GROUP BY ?item
+              ORDER BY ?item
+              """
+              detail_payload, detail_seconds, detail_bytes = execute(detail_query)
+              details = detail_payload.get("results", {}).get("bindings", [])
+              result.update(
+                  unique_item_count=len(items),
+                  detail_count=len(details),
+                  detail_seconds=detail_seconds,
+                  detail_bytes=detail_bytes,
+                  success=len(items) == len(details),
+              )
+          except Exception as exc:
+              result.update(
+                  success=False,
+                  exception_type=type(exc).__name__,
+                  exception=str(exc)[:500],
+              )
 
-          result["success"] = all(row.get("success") for row in result["results"])
-          target = Path("probe-results/two-phase-probe.json")
+          target = Path("probe-results/chunked-movie-probe.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -177,15 +180,15 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: two-phase-probe
-          path: probe-results/two-phase-probe.json
-      - name: Save result on feature branch
+          name: chunked-movie-probe
+          path: probe-results/chunked-movie-probe.json
+      - name: Save result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/two-phase-probe.json
+          git add probe-results/chunked-movie-probe.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record two-phase Wikidata probe"
+          git commit -m "test: record chunked movie probe"
           git push
