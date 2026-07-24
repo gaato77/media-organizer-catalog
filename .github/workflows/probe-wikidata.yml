@@ -1,4 +1,4 @@
-name: Date-first catalog source probe
+name: Production catalog source probe
 
 on:
   workflow_dispatch:
@@ -7,6 +7,8 @@ on:
       - feature/compact-catalog-builder
     paths:
       - .github/workflows/probe-wikidata.yml
+      - builder/src/media_catalog_builder/wikidata.py
+      - builder/tests/test_wikidata.py
 
 permissions:
   contents: write
@@ -14,146 +16,86 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install "requests>=2.32,<3"
-      - name: Query date candidates and classify locally
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+      - run: python -m pip install -e "builder[test]"
+
+      - name: Verify code
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          {
+            python -m pytest builder/tests -q &&
+            python -m ruff check builder &&
+            python -m ruff format --check builder &&
+            python -m mypy builder/src/media_catalog_builder
+          } > verification.log 2>&1
+          status=$?
+          cat verification.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Run paginated production probe
+        id: catalog_probe
+        if: steps.verify.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python builder/scripts/probe_wikidata.py \
+            --config builder/config/catalog.toml \
+            --output-dir probe-output \
+            --start 2025-01-01T00:00:00Z \
+            --end 2025-02-01T00:00:00Z \
+            --limit 25 > probe.log 2>&1
+          status=$?
+          cat probe.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Build reviewable result
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          PROBE_EXIT_CODE: ${{ steps.catalog_probe.outputs.exit_code }}
         run: |
           python - <<'PY'
           import json
-          import re
-          import time
+          import os
           from pathlib import Path
 
-          import requests
-
-          endpoint = "https://query.wikidata.org/sparql"
-          headers = {
-              "Accept": "application/sparql-results+json",
-              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
-          }
+          verify_code = int(os.environ.get("VERIFY_EXIT_CODE") or 1)
+          probe_value = os.environ.get("PROBE_EXIT_CODE")
+          probe_code = int(probe_value) if probe_value else None
           result = {
-              "endpoint": endpoint,
-              "query_shape": "date and IMDb first, local class filtering",
-              "candidate_limit": 5000,
+              "python": "3.12",
+              "verification_exit_code": verify_code,
+              "probe_exit_code": probe_code,
+              "status": "success" if verify_code == 0 and probe_code == 0 else "failed",
           }
 
-          def execute(query):
-              started = time.perf_counter()
-              response = requests.post(
-                  endpoint,
-                  data={"query": query, "format": "json"},
-                  headers=headers,
-                  timeout=70,
-              )
-              elapsed = round(time.perf_counter() - started, 3)
-              response.raise_for_status()
-              return response.json(), elapsed, len(response.content)
+          verification_log = Path("verification.log")
+          if verification_log.exists():
+              result["verification_log_tail"] = verification_log.read_text(
+                  encoding="utf-8", errors="replace"
+              )[-4000:]
 
-          def closure(root_values):
-              query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-              SELECT DISTINCT ?class WHERE {{
-                VALUES ?root {{ {root_values} }}
-                ?class wdt:P279* ?root .
-              }}
-              ORDER BY ?class
-              LIMIT 1000
-              """
-              payload, seconds, response_bytes = execute(query)
-              bindings = payload.get("results", {}).get("bindings", [])
-              qids = set()
-              for row in bindings:
-                  value = row.get("class", {}).get("value", "")
-                  match = re.fullmatch(
-                      r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
-                      value,
-                  )
-                  if match:
-                      qids.add(match.group(1))
-              return qids, seconds, response_bytes, len(bindings) == 1000
+          summary_path = Path("probe-output/summary.json")
+          if summary_path.exists():
+              result["summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
+          else:
+              probe_log = Path("probe.log")
+              if probe_log.exists():
+                  result["probe_log_tail"] = probe_log.read_text(
+                      encoding="utf-8", errors="replace"
+                  )[-4000:]
 
-          try:
-              movie_classes, movie_class_seconds, movie_class_bytes, movie_class_limit = closure(
-                  "wd:Q11424"
-              )
-              series_classes, series_class_seconds, series_class_bytes, series_class_limit = closure(
-                  "wd:Q5398426 wd:Q1259759"
-              )
-              result.update(
-                  movie_class_count=len(movie_classes),
-                  movie_class_seconds=movie_class_seconds,
-                  movie_class_bytes=movie_class_bytes,
-                  movie_class_hit_limit=movie_class_limit,
-                  series_class_count=len(series_classes),
-                  series_class_seconds=series_class_seconds,
-                  series_class_bytes=series_class_bytes,
-                  series_class_hit_limit=series_class_limit,
-              )
-
-              candidate_query = """PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-              PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-              SELECT ?item ?class (MIN(?releaseDateValue) AS ?releaseDate) WHERE {
-                ?item wdt:P345 ?imdbId ;
-                      wdt:P577 ?releaseDateValue ;
-                      wdt:P31 ?class .
-                FILTER(
-                  ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
-                  ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
-                )
-              }
-              GROUP BY ?item ?class
-              ORDER BY ?item ?class
-              LIMIT 5000
-              """
-              payload, seconds, response_bytes = execute(candidate_query)
-              bindings = payload.get("results", {}).get("bindings", [])
-
-              all_items = set()
-              movie_items = set()
-              series_items = set()
-              other_items = set()
-              for row in bindings:
-                  item = row.get("item", {}).get("value", "")
-                  class_uri = row.get("class", {}).get("value", "")
-                  class_qid = class_uri.rsplit("/", 1)[-1]
-                  if not item:
-                      continue
-                  all_items.add(item)
-                  matched = False
-                  if class_qid in movie_classes:
-                      movie_items.add(item)
-                      matched = True
-                  if class_qid in series_classes:
-                      series_items.add(item)
-                      matched = True
-                  if not matched:
-                      other_items.add(item)
-
-              result.update(
-                  candidate_seconds=seconds,
-                  candidate_response_bytes=response_bytes,
-                  candidate_rows=len(bindings),
-                  candidate_hit_limit=len(bindings) == 5000,
-                  unique_candidate_items=len(all_items),
-                  movie_items=len(movie_items),
-                  series_items=len(series_items),
-                  other_items=len(other_items),
-                  overlap_items=len(movie_items & series_items),
-                  success=True,
-              )
-          except Exception as exc:
-              result.update(
-                  success=False,
-                  exception_type=type(exc).__name__,
-                  exception=str(exc)[:500],
-              )
-
-          target = Path("probe-results/date-first-probe.json")
+          target = Path("probe-results/production-paginated.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -161,17 +103,35 @@ jobs:
           )
           print(target.read_text(encoding="utf-8"))
           PY
+
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: date-first-probe
-          path: probe-results/date-first-probe.json
-      - name: Save result
+          name: production-catalog-source-probe
+          path: |
+            probe-output
+            verification.log
+            probe.log
+            probe-results/production-paginated.json
+          if-no-files-found: warn
+
+      - name: Save result on feature branch
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/date-first-probe.json
+          git add probe-results/production-paginated.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record date-first source probe"
+          git commit -m "test: record paginated production probe"
           git push
+
+      - name: Enforce successful verification and probe
+        if: always()
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          PROBE_EXIT_CODE: ${{ steps.catalog_probe.outputs.exit_code }}
+        run: |
+          test "${VERIFY_EXIT_CODE:-1}" = "0"
+          test "${PROBE_EXIT_CODE:-1}" = "0"
