@@ -1,4 +1,4 @@
-name: Chunked movie source probe
+name: Direct movie class probe
 
 on:
   workflow_dispatch:
@@ -14,163 +14,73 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: pip
-          cache-dependency-path: builder/pyproject.toml
-      - run: python -m pip install -e "builder[test]"
-      - name: Verify code
-        run: |
-          python -m pytest builder/tests -q
-          python -m ruff check builder
-          python -m ruff format --check builder
-          python -m mypy builder/src/media_catalog_builder
-      - name: Measure chunked movie strategy
+      - run: python -m pip install "requests>=2.32,<3"
+      - name: Query direct movie instances only
         run: |
           python - <<'PY'
           import json
-          import re
           import time
           from pathlib import Path
 
           import requests
 
           endpoint = "https://query.wikidata.org/sparql"
-          headers = {
-              "Accept": "application/sparql-results+json",
-              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
+          query = """PREFIX wd: <http://www.wikidata.org/entity/>
+          PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+          PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+          SELECT ?item (MIN(?releaseDateValue) AS ?releaseDate) WHERE {
+            ?item wdt:P31 wd:Q11424 ;
+                  wdt:P345 ?imdbId ;
+                  wdt:P577 ?releaseDateValue .
+            FILTER(
+              ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+              ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
+            )
           }
+          GROUP BY ?item
+          ORDER BY ?item
+          LIMIT 1000
+          """
           result = {
               "endpoint": endpoint,
               "media_type": "movie",
-              "class_chunk_size": 200,
-              "chunks": [],
+              "query_shape": "direct P31 Q11424 only",
+              "request_method": "POST",
           }
-
-          def execute(query):
-              started = time.perf_counter()
+          started = time.perf_counter()
+          try:
               response = requests.post(
                   endpoint,
                   data={"query": query, "format": "json"},
-                  headers=headers,
+                  headers={
+                      "Accept": "application/sparql-results+json",
+                      "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
+                  },
                   timeout=70,
               )
-              elapsed = round(time.perf_counter() - started, 3)
+              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
+              result["status_code"] = response.status_code
+              result["content_type"] = response.headers.get("Content-Type", "")
+              result["response_bytes"] = len(response.content)
               response.raise_for_status()
-              return response.json(), elapsed, len(response.content)
-
-          try:
-              class_query = """PREFIX wd: <http://www.wikidata.org/entity/>
-              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-              SELECT DISTINCT ?class WHERE {
-                ?class wdt:P279* wd:Q11424 .
-              }
-              ORDER BY ?class
-              LIMIT 1000
-              """
-              class_payload, class_seconds, class_bytes = execute(class_query)
-              class_bindings = class_payload.get("results", {}).get("bindings", [])
-              qids = []
-              for row in class_bindings:
-                  value = row.get("class", {}).get("value", "")
-                  match = re.fullmatch(
-                      r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
-                      value,
-                  )
-                  if match:
-                      qids.append(match.group(1))
-              qids = sorted(set(qids), key=lambda value: int(value[1:]))
-              result.update(
-                  class_count=len(qids),
-                  class_seconds=class_seconds,
-                  class_bytes=class_bytes,
-              )
-
-              items = {}
-              chunk_size = 200
-              for index in range(0, len(qids), chunk_size):
-                  chunk = qids[index : index + chunk_size]
-                  class_values = " ".join(f"wd:{qid}" for qid in chunk)
-                  query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-                  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-                  SELECT ?item (MIN(?releaseDateValue) AS ?releaseDate) WHERE {{
-                    VALUES ?class {{ {class_values} }}
-                    ?item wdt:P31 ?class ;
-                          wdt:P345 ?imdbId ;
-                          wdt:P577 ?releaseDateValue .
-                    FILTER(
-                      ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
-                      ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
-                    )
-                  }}
-                  GROUP BY ?item
-                  ORDER BY ?item
-                  LIMIT 1000
-                  """
-                  payload, seconds, response_bytes = execute(query)
-                  bindings = payload.get("results", {}).get("bindings", [])
-                  for row in bindings:
-                      item = row.get("item", {}).get("value")
-                      release_date = row.get("releaseDate", {}).get("value")
-                      if item and release_date:
-                          previous = items.get(item)
-                          items[item] = min(previous, release_date) if previous else release_date
-                  result["chunks"].append(
-                      {
-                          "chunk_number": index // chunk_size + 1,
-                          "class_count": len(chunk),
-                          "item_count": len(bindings),
-                          "hit_limit": len(bindings) == 1000,
-                          "seconds": seconds,
-                          "response_bytes": response_bytes,
-                      }
-                  )
-                  time.sleep(1)
-
-              item_values = " ".join(
-                  f"wd:{uri.rsplit('/', 1)[-1]}" for uri in sorted(items)
-              )
-              detail_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-              PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-              PREFIX schema: <http://schema.org/>
-              SELECT ?item
-                (GROUP_CONCAT(DISTINCT STR(?originalValue); separator="\\u001F") AS ?originals)
-                (SAMPLE(?enValue) AS ?enLabel)
-                (SAMPLE(?esValue) AS ?esLabel)
-                (MAX(?modifiedValue) AS ?modified)
-              WHERE {{
-                VALUES ?item {{ {item_values} }}
-                OPTIONAL {{ ?item wdt:P1476 ?originalValue . }}
-                OPTIONAL {{ ?item rdfs:label ?enValue . FILTER(LANG(?enValue) = "en") }}
-                OPTIONAL {{ ?item rdfs:label ?esValue . FILTER(LANG(?esValue) = "es") }}
-                OPTIONAL {{ ?item schema:dateModified ?modifiedValue . }}
-              }}
-              GROUP BY ?item
-              ORDER BY ?item
-              """
-              detail_payload, detail_seconds, detail_bytes = execute(detail_query)
-              details = detail_payload.get("results", {}).get("bindings", [])
-              result.update(
-                  unique_item_count=len(items),
-                  detail_count=len(details),
-                  detail_seconds=detail_seconds,
-                  detail_bytes=detail_bytes,
-                  success=len(items) == len(details),
-              )
+              payload = response.json()
+              bindings = payload.get("results", {}).get("bindings", [])
+              result["item_count"] = len(bindings)
+              result["hit_limit"] = len(bindings) == 1000
+              result["success"] = True
           except Exception as exc:
-              result.update(
-                  success=False,
-                  exception_type=type(exc).__name__,
-                  exception=str(exc)[:500],
-              )
+              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
+              result["success"] = False
+              result["exception_type"] = type(exc).__name__
+              result["exception"] = str(exc)[:500]
 
-          target = Path("probe-results/chunked-movie-probe.json")
+          target = Path("probe-results/direct-movie-root.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -180,15 +90,15 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: chunked-movie-probe
-          path: probe-results/chunked-movie-probe.json
+          name: direct-movie-root
+          path: probe-results/direct-movie-root.json
       - name: Save result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/chunked-movie-probe.json
+          git add probe-results/direct-movie-root.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record chunked movie probe"
+          git commit -m "test: record direct movie root probe"
           git push
