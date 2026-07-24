@@ -1,0 +1,13 @@
+{
+  "content_type": "application/sparql-results+json;charset=utf-8",
+  "elapsed_seconds": 3.088,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "hit_limit": false,
+  "item_count": 897,
+  "media_type": "movie",
+  "query_shape": "direct P31 Q11424 only",
+  "request_method": "POST",
+  "response_bytes": 258428,
+  "status_code": 200,
+  "success": true
+}
