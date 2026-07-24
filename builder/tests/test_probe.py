@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from media_catalog_builder.model import MediaType, SourceRecord
@@ -33,8 +33,8 @@ class FakeSource:
 
 def test_probe_writes_metrics_for_both_media_types(tmp_path: Path):
     ticks = iter((1.0, 1.25, 2.0, 2.5))
-    start = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    end = datetime(2025, 2, 1, tzinfo=timezone.utc)
+    start = datetime(2025, 1, 1, tzinfo=UTC)
+    end = datetime(2025, 2, 1, tzinfo=UTC)
 
     summary = run_probe(
         FakeSource(),
