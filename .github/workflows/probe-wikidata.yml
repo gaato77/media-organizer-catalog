@@ -1,4 +1,4 @@
-# Deterministic ZIP and size-gate checkpoint verification
+# Deterministic ZIP and size-gate checkpoint verification — final rerun
 name: Production catalog source probe
 
 on:
