@@ -1,4 +1,4 @@
-name: Direct movie class probe
+name: Date-first catalog source probe
 
 on:
   workflow_dispatch:
@@ -21,66 +21,139 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install "requests>=2.32,<3"
-      - name: Query direct movie instances only
+      - name: Query date candidates and classify locally
         run: |
           python - <<'PY'
           import json
+          import re
           import time
           from pathlib import Path
 
           import requests
 
           endpoint = "https://query.wikidata.org/sparql"
-          query = """PREFIX wd: <http://www.wikidata.org/entity/>
-          PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-          PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-          SELECT ?item (MIN(?releaseDateValue) AS ?releaseDate) WHERE {
-            ?item wdt:P31 wd:Q11424 ;
-                  wdt:P345 ?imdbId ;
-                  wdt:P577 ?releaseDateValue .
-            FILTER(
-              ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
-              ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
-            )
+          headers = {
+              "Accept": "application/sparql-results+json",
+              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
           }
-          GROUP BY ?item
-          ORDER BY ?item
-          LIMIT 1000
-          """
           result = {
               "endpoint": endpoint,
-              "media_type": "movie",
-              "query_shape": "direct P31 Q11424 only",
-              "request_method": "POST",
+              "query_shape": "date and IMDb first, local class filtering",
+              "candidate_limit": 5000,
           }
-          started = time.perf_counter()
-          try:
+
+          def execute(query):
+              started = time.perf_counter()
               response = requests.post(
                   endpoint,
                   data={"query": query, "format": "json"},
-                  headers={
-                      "Accept": "application/sparql-results+json",
-                      "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
-                  },
+                  headers=headers,
                   timeout=70,
               )
-              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
-              result["status_code"] = response.status_code
-              result["content_type"] = response.headers.get("Content-Type", "")
-              result["response_bytes"] = len(response.content)
+              elapsed = round(time.perf_counter() - started, 3)
               response.raise_for_status()
-              payload = response.json()
-              bindings = payload.get("results", {}).get("bindings", [])
-              result["item_count"] = len(bindings)
-              result["hit_limit"] = len(bindings) == 1000
-              result["success"] = True
-          except Exception as exc:
-              result["elapsed_seconds"] = round(time.perf_counter() - started, 3)
-              result["success"] = False
-              result["exception_type"] = type(exc).__name__
-              result["exception"] = str(exc)[:500]
+              return response.json(), elapsed, len(response.content)
 
-          target = Path("probe-results/direct-movie-root.json")
+          def closure(root_values):
+              query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+              SELECT DISTINCT ?class WHERE {{
+                VALUES ?root {{ {root_values} }}
+                ?class wdt:P279* ?root .
+              }}
+              ORDER BY ?class
+              LIMIT 1000
+              """
+              payload, seconds, response_bytes = execute(query)
+              bindings = payload.get("results", {}).get("bindings", [])
+              qids = set()
+              for row in bindings:
+                  value = row.get("class", {}).get("value", "")
+                  match = re.fullmatch(
+                      r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
+                      value,
+                  )
+                  if match:
+                      qids.add(match.group(1))
+              return qids, seconds, response_bytes, len(bindings) == 1000
+
+          try:
+              movie_classes, movie_class_seconds, movie_class_bytes, movie_class_limit = closure(
+                  "wd:Q11424"
+              )
+              series_classes, series_class_seconds, series_class_bytes, series_class_limit = closure(
+                  "wd:Q5398426 wd:Q1259759"
+              )
+              result.update(
+                  movie_class_count=len(movie_classes),
+                  movie_class_seconds=movie_class_seconds,
+                  movie_class_bytes=movie_class_bytes,
+                  movie_class_hit_limit=movie_class_limit,
+                  series_class_count=len(series_classes),
+                  series_class_seconds=series_class_seconds,
+                  series_class_bytes=series_class_bytes,
+                  series_class_hit_limit=series_class_limit,
+              )
+
+              candidate_query = """PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+              PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+              SELECT ?item ?class (MIN(?releaseDateValue) AS ?releaseDate) WHERE {
+                ?item wdt:P345 ?imdbId ;
+                      wdt:P577 ?releaseDateValue ;
+                      wdt:P31 ?class .
+                FILTER(
+                  ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+                  ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
+                )
+              }
+              GROUP BY ?item ?class
+              ORDER BY ?item ?class
+              LIMIT 5000
+              """
+              payload, seconds, response_bytes = execute(candidate_query)
+              bindings = payload.get("results", {}).get("bindings", [])
+
+              all_items = set()
+              movie_items = set()
+              series_items = set()
+              other_items = set()
+              for row in bindings:
+                  item = row.get("item", {}).get("value", "")
+                  class_uri = row.get("class", {}).get("value", "")
+                  class_qid = class_uri.rsplit("/", 1)[-1]
+                  if not item:
+                      continue
+                  all_items.add(item)
+                  matched = False
+                  if class_qid in movie_classes:
+                      movie_items.add(item)
+                      matched = True
+                  if class_qid in series_classes:
+                      series_items.add(item)
+                      matched = True
+                  if not matched:
+                      other_items.add(item)
+
+              result.update(
+                  candidate_seconds=seconds,
+                  candidate_response_bytes=response_bytes,
+                  candidate_rows=len(bindings),
+                  candidate_hit_limit=len(bindings) == 5000,
+                  unique_candidate_items=len(all_items),
+                  movie_items=len(movie_items),
+                  series_items=len(series_items),
+                  other_items=len(other_items),
+                  overlap_items=len(movie_items & series_items),
+                  success=True,
+              )
+          except Exception as exc:
+              result.update(
+                  success=False,
+                  exception_type=type(exc).__name__,
+                  exception=str(exc)[:500],
+              )
+
+          target = Path("probe-results/date-first-probe.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -90,15 +163,15 @@ jobs:
           PY
       - uses: actions/upload-artifact@v4
         with:
-          name: direct-movie-root
-          path: probe-results/direct-movie-root.json
+          name: date-first-probe
+          path: probe-results/date-first-probe.json
       - name: Save result
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/direct-movie-root.json
+          git add probe-results/date-first-probe.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record direct movie root probe"
+          git commit -m "test: record date-first source probe"
           git push
