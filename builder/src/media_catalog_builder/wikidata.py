@@ -141,9 +141,7 @@ def _extract_bindings(payload: Mapping[str, Any]) -> list[Binding]:
         for key, raw_value in raw_binding.items():
             if not isinstance(key, str) or not isinstance(raw_value, Mapping):
                 raise ValueError("Wikidata binding entry is invalid")
-            converted[key] = {
-                str(value_key): str(value) for value_key, value in raw_value.items()
-            }
+            converted[key] = {str(value_key): str(value) for value_key, value in raw_value.items()}
         bindings.append(converted)
     return bindings
 
