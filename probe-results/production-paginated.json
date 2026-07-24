@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................................ [ 91%]\n.......                                                                  [100%]\n79 passed in 0.64s\nAll checks passed!\nunformatted: File would be reformatted\n  --> builder/tests/test_manifest.py:1:1\n   |\n80 |     deltas = tuple(\n   -         _delta(f\"2026.05.{day:02d}\", f\"2026.05.{day + 1:02d}\", 10)\n   -         for day in range(1, 10)\n81 +         _delta(f\"2026.05.{day:02d}\", f\"2026.05.{day + 1:02d}\", 10) for day in range(1, 10)\n82 |     )\n   |\n\n1 file would be reformatted, 33 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 30.157,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 0.985,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................................ [ 91%]\n.......                                                                  [100%]\n79 passed in 0.60s\nAll checks passed!\n34 files already formatted\nSuccess: no issues found in 16 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
