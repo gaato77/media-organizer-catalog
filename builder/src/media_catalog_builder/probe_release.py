@@ -2,18 +2,28 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
 from media_catalog_builder.classify import binding_to_source
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.model import MediaType, SourceRecord
-from media_catalog_builder.names import to_catalog_record
+from media_catalog_builder.names import catalog_skip_reason, to_catalog_record
 from media_catalog_builder.release import (
     assemble_release,
     build_database_from_sources,
     validate_release,
 )
+
+
+def _write_json_atomic(path: Path, payload: object) -> None:
+    temporary = path.with_name(f"{path.name}.tmp")
+    temporary.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    temporary.replace(path)
 
 
 def _load_cached_records(path: Path, media_type: MediaType) -> list[SourceRecord]:
@@ -45,6 +55,51 @@ def _load_cached_records(path: Path, media_type: MediaType) -> list[SourceRecord
     return sorted(records, key=lambda record: record.qid)
 
 
+def build_skip_audit(records: Sequence[SourceRecord]) -> dict[str, object]:
+    audited: list[dict[str, object]] = []
+    by_baseline_reason: dict[str, int] = {}
+    by_remaining_reason: dict[str, int] = {}
+    recovered_records = 0
+
+    for source in sorted(records, key=lambda record: record.qid):
+        baseline = replace(source, alternate_titles=())
+        baseline_reason = catalog_skip_reason(baseline)
+        if baseline_reason is None:
+            continue
+        by_baseline_reason[baseline_reason] = by_baseline_reason.get(baseline_reason, 0) + 1
+        remaining_reason = catalog_skip_reason(source)
+        status = "recovered" if remaining_reason is None else "skipped"
+        if remaining_reason is None:
+            recovered_records += 1
+        else:
+            by_remaining_reason[remaining_reason] = by_remaining_reason.get(remaining_reason, 0) + 1
+        audited.append(
+            {
+                "qid": f"Q{source.qid}",
+                "media_type": source.media_type.name.lower(),
+                "year": source.year,
+                "baseline_reason": baseline_reason,
+                "remaining_reason": remaining_reason,
+                "status": status,
+                "original_titles": list(source.original_titles),
+                "english_label": source.english_label,
+                "spanish_label": source.spanish_label,
+                "alternate_titles": list(source.alternate_titles),
+            }
+        )
+
+    baseline_skipped = len(audited)
+    remaining_skipped = baseline_skipped - recovered_records
+    return {
+        "baseline_skipped_records": baseline_skipped,
+        "recovered_records": recovered_records,
+        "remaining_skipped_records": remaining_skipped,
+        "by_baseline_reason": dict(sorted(by_baseline_reason.items())),
+        "by_remaining_reason": dict(sorted(by_remaining_reason.items())),
+        "records": audited,
+    }
+
+
 def _write_lookup_cases(records: Sequence[SourceRecord], path: Path) -> None:
     cases: list[dict[str, object]] = []
     selected_types: set[MediaType] = set()
@@ -65,10 +120,7 @@ def _write_lookup_cases(records: Sequence[SourceRecord], path: Path) -> None:
         selected_types.add(source.media_type)
     if not cases:
         raise ValueError("probe records contain no representative lookup case")
-    path.write_text(
-        json.dumps(cases, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    _write_json_atomic(path, cases)
 
 
 def build_probe_release(
@@ -89,7 +141,10 @@ def build_probe_release(
     work_dir.mkdir(parents=True, exist_ok=True)
     catalog_path = work_dir / "catalog.sqlite"
     lookup_cases_path = work_dir / "lookup-cases.json"
+    skip_audit_path = work_dir / "skip-audit.json"
     _write_lookup_cases(records, lookup_cases_path)
+    skip_audit = build_skip_audit(records)
+    _write_json_atomic(skip_audit_path, skip_audit)
 
     stats = build_database_from_sources(
         records,
@@ -118,7 +173,12 @@ def build_probe_release(
         "source_records": len(records),
         "catalog_records": stats.catalog_records,
         "skipped_records": stats.skipped_records,
+        "baseline_skipped_records": skip_audit["baseline_skipped_records"],
+        "recovered_records": skip_audit["recovered_records"],
+        "remaining_skipped_records": skip_audit["remaining_skipped_records"],
+        "by_remaining_reason": skip_audit["by_remaining_reason"],
         "database_bytes": stats.database_bytes,
         "compressed_bytes": manifest.full.download_bytes,
         "release_files": release_files,
+        "skip_audit_file": skip_audit_path.name,
     }
