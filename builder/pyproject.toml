@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "media-organizer-catalog-builder"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = ["requests>=2.32,<3"]
+
+[project.optional-dependencies]
+test = ["pytest>=8.3,<9"]
+
+[project.scripts]
+media-catalog-builder = "media_catalog_builder.cli:console_main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
