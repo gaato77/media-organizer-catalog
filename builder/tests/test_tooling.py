@@ -29,9 +29,7 @@ def test_ci_runs_tests_lint_format_and_types() -> None:
 
 
 def test_production_probe_covers_complete_reference_month() -> None:
-    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata.yml").read_text(
-        encoding="utf-8"
-    )
+    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata.yml").read_text(encoding="utf-8")
     assert "timeout-minutes: 30" in workflow
     assert "--start 2025-01-01T00:00:00Z" in workflow
     assert "--end 2025-02-01T00:00:00Z" in workflow
