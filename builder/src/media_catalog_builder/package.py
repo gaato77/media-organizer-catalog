@@ -6,7 +6,7 @@ import shutil
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO
+from typing import IO
 
 _MIB = 1024 * 1024
 _COPY_BUFFER = 1024 * 1024
@@ -55,7 +55,7 @@ def _validated_archive_name(value: str) -> str:
     return value
 
 
-def _copy_to_archive(source: BinaryIO, destination: BinaryIO) -> None:
+def _copy_to_archive(source: IO[bytes], destination: IO[bytes]) -> None:
     shutil.copyfileobj(source, destination, length=_COPY_BUFFER)
 
 
