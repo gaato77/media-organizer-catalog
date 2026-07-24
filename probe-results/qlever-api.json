@@ -3,7 +3,7 @@
   "content_type": "text/html",
   "endpoint": "https://qlever.dev/api/wikidata",
   "json": false,
-  "request_method": "POST",
+  "request_method": "GET",
   "requested_action": "sparql_json_export",
   "response_bytes": 162,
   "status_code": 403
