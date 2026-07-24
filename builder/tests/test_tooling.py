@@ -44,6 +44,21 @@ def test_production_probe_builds_and_uploads_validated_release() -> None:
     assert "PACKAGE_EXIT_CODE" in workflow
 
 
+def test_annual_probe_is_resumable_and_packages_complete_2025() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata-year.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "timeout-minutes: 120" in workflow
+    assert "actions/cache/restore@v4" in workflow
+    assert "actions/cache/save@v4" in workflow
+    assert "if: always()" in workflow
+    assert "--year 2025" in workflow
+    assert "--limit 5000" in workflow
+    assert "build_probe_release" in workflow
+    assert "probe-results/year-2025.json" in workflow
+    assert "annual-skip-audit.json" in workflow
+
+
 def test_codeql_scans_python_on_pull_requests_and_weekly() -> None:
     workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
     assert "pull_request:" in workflow
