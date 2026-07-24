@@ -18,6 +18,7 @@ class SourceRecord:
     english_label: str | None
     spanish_label: str | None
     modified_at: str | None = None
+    alternate_titles: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
