@@ -1,8 +1,8 @@
 from __future__ import annotations
 
+import tomllib
 from dataclasses import dataclass
 from pathlib import Path
-import tomllib
 
 
 @dataclass(frozen=True, slots=True)
@@ -25,7 +25,7 @@ class CatalogConfig:
     sparql_endpoint: str
 
     @classmethod
-    def load(cls, path: Path) -> "CatalogConfig":
+    def load(cls, path: Path) -> CatalogConfig:
         with path.open("rb") as handle:
             values = tomllib.load(handle)
 
