@@ -265,8 +265,7 @@ def _apply_delta_sql(temp_path: Path, delta_path: Path) -> None:
                 "DELETE FROM works WHERE qid IN (SELECT qid FROM delta_db.delete_works)"
             )
             connection.execute(
-                "DELETE FROM names WHERE work_qid IN "
-                "(SELECT qid FROM delta_db.upsert_works)"
+                "DELETE FROM names WHERE work_qid IN (SELECT qid FROM delta_db.upsert_works)"
             )
             connection.execute(
                 "INSERT OR REPLACE INTO works(qid, media_type, release_year, canonical_title) "
