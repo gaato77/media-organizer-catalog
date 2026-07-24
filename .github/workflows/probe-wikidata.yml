@@ -1,4 +1,4 @@
-name: Optimized catalog source probe
+name: Two-phase catalog source probe
 
 on:
   workflow_dispatch:
@@ -7,9 +7,6 @@ on:
       - feature/compact-catalog-builder
     paths:
       - .github/workflows/probe-wikidata.yml
-      - builder/scripts/probe_wikidata.py
-      - builder/src/media_catalog_builder/*.py
-      - builder/tests/*.py
 
 permissions:
   contents: write
@@ -26,69 +23,151 @@ jobs:
           cache: pip
           cache-dependency-path: builder/pyproject.toml
       - run: python -m pip install -e "builder[test]"
-      - name: Verify code on Python 3.12
-        id: verify
-        shell: bash
+      - name: Verify code
         run: |
-          set +e
-          {
-            python -m pytest builder/tests -q &&
-            python -m ruff check builder &&
-            python -m ruff format --check builder &&
-            python -m mypy builder/src/media_catalog_builder
-          } > verification.log 2>&1
-          status=$?
-          cat verification.log
-          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Run optimized production probe
-        id: probe
-        if: steps.verify.outputs.exit_code == '0'
-        shell: bash
-        run: |
-          set +e
-          python builder/scripts/probe_wikidata.py \
-            --config builder/config/catalog.toml \
-            --output-dir probe-output \
-            --start 2025-01-01T00:00:00Z \
-            --end 2025-02-01T00:00:00Z \
-            --limit 25 > probe.log 2>&1
-          status=$?
-          cat probe.log
-          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - name: Build reviewable result
-        env:
-          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
-          PROBE_EXIT_CODE: ${{ steps.probe.outputs.exit_code }}
+          python -m pytest builder/tests -q
+          python -m ruff check builder
+          python -m ruff format --check builder
+          python -m mypy builder/src/media_catalog_builder
+      - name: Measure two-phase strategy
         run: |
           python - <<'PY'
           import json
-          import os
+          import re
+          import time
           from pathlib import Path
 
-          verify_exit = int(os.environ.get("VERIFY_EXIT_CODE") or 1)
-          probe_value = os.environ.get("PROBE_EXIT_CODE")
-          probe_exit = int(probe_value) if probe_value else None
-          result = {
-              "python": "3.12",
-              "verification_exit_code": verify_exit,
-              "probe_exit_code": probe_exit,
-              "status": "success" if verify_exit == 0 and probe_exit == 0 else "failed",
-          }
-          verification_log = Path("verification.log").read_text(
-              encoding="utf-8", errors="replace"
-          )
-          result["verification_log_tail"] = verification_log[-4000:]
-          summary_path = Path("probe-output/summary.json")
-          if summary_path.exists():
-              result["summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
-          elif Path("probe.log").exists():
-              result["probe_log_tail"] = Path("probe.log").read_text(
-                  encoding="utf-8", errors="replace"
-              )[-4000:]
+          import requests
 
-          target = Path("probe-results/production-probe.json")
+          endpoint = "https://query.wikidata.org/sparql"
+          headers = {
+              "Accept": "application/sparql-results+json",
+              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
+          }
+          roots_by_type = {
+              "movie": ("Q11424",),
+              "series": ("Q5398426", "Q1259759"),
+          }
+          result = {
+              "endpoint": endpoint,
+              "strategy": "class closure, exact item selection, exact item metadata",
+              "results": [],
+          }
+
+          def execute(query):
+              started = time.perf_counter()
+              response = requests.post(
+                  endpoint,
+                  data={"query": query, "format": "json"},
+                  headers=headers,
+                  timeout=70,
+              )
+              elapsed = round(time.perf_counter() - started, 3)
+              response.raise_for_status()
+              return response.json(), elapsed, len(response.content)
+
+          for media_type, roots in roots_by_type.items():
+              measurement = {"media_type": media_type}
+              try:
+                  root_values = " ".join(f"wd:{qid}" for qid in roots)
+                  class_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+                  SELECT DISTINCT ?class WHERE {{
+                    VALUES ?root {{ {root_values} }}
+                    ?class wdt:P279* ?root .
+                  }}
+                  ORDER BY ?class
+                  LIMIT 1000
+                  """
+                  class_payload, class_seconds, class_bytes = execute(class_query)
+                  class_bindings = class_payload.get("results", {}).get("bindings", [])
+                  qids = []
+                  for row in class_bindings:
+                      value = row.get("class", {}).get("value", "")
+                      match = re.fullmatch(
+                          r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)",
+                          value,
+                      )
+                      if match:
+                          qids.append(match.group(1))
+                  qids = sorted(set(qids), key=lambda value: int(value[1:]))
+                  measurement.update(
+                      class_count=len(qids),
+                      class_seconds=class_seconds,
+                      class_bytes=class_bytes,
+                  )
+
+                  class_values = " ".join(f"wd:{qid}" for qid in qids)
+                  item_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+                  PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
+                  SELECT ?item (MIN(?releaseDateValue) AS ?releaseDate) WHERE {{
+                    VALUES ?class {{ {class_values} }}
+                    ?item wdt:P31 ?class ;
+                          wdt:P345 ?imdbId ;
+                          wdt:P577 ?releaseDateValue .
+                    FILTER(
+                      ?releaseDateValue >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
+                      ?releaseDateValue < "2025-02-01T00:00:00Z"^^xsd:dateTime
+                    )
+                  }}
+                  GROUP BY ?item
+                  ORDER BY ?item
+                  LIMIT 25
+                  """
+                  item_payload, item_seconds, item_bytes = execute(item_query)
+                  item_bindings = item_payload.get("results", {}).get("bindings", [])
+                  item_uris = [
+                      row.get("item", {}).get("value", "")
+                      for row in item_bindings
+                      if row.get("item", {}).get("value")
+                  ]
+                  measurement.update(
+                      item_count=len(item_uris),
+                      item_seconds=item_seconds,
+                      item_bytes=item_bytes,
+                  )
+
+                  item_values = " ".join(
+                      f"wd:{uri.rsplit('/', 1)[-1]}" for uri in item_uris
+                  )
+                  detail_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
+                  PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+                  PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+                  PREFIX schema: <http://schema.org/>
+                  SELECT ?item
+                    (GROUP_CONCAT(DISTINCT STR(?originalValue); separator="\\u001F") AS ?originals)
+                    (SAMPLE(?enValue) AS ?enLabel)
+                    (SAMPLE(?esValue) AS ?esLabel)
+                    (MAX(?modifiedValue) AS ?modified)
+                  WHERE {{
+                    VALUES ?item {{ {item_values} }}
+                    OPTIONAL {{ ?item wdt:P1476 ?originalValue . }}
+                    OPTIONAL {{ ?item rdfs:label ?enValue . FILTER(LANG(?enValue) = "en") }}
+                    OPTIONAL {{ ?item rdfs:label ?esValue . FILTER(LANG(?esValue) = "es") }}
+                    OPTIONAL {{ ?item schema:dateModified ?modifiedValue . }}
+                  }}
+                  GROUP BY ?item
+                  ORDER BY ?item
+                  """
+                  detail_payload, detail_seconds, detail_bytes = execute(detail_query)
+                  detail_bindings = detail_payload.get("results", {}).get("bindings", [])
+                  measurement.update(
+                      detail_count=len(detail_bindings),
+                      detail_seconds=detail_seconds,
+                      detail_bytes=detail_bytes,
+                      success=len(detail_bindings) == len(item_uris),
+                  )
+              except Exception as exc:
+                  measurement.update(
+                      success=False,
+                      exception_type=type(exc).__name__,
+                      exception=str(exc)[:500],
+                  )
+              result["results"].append(measurement)
+
+          result["success"] = all(row.get("success") for row in result["results"])
+          target = Path("probe-results/two-phase-probe.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -97,22 +176,16 @@ jobs:
           print(target.read_text(encoding="utf-8"))
           PY
       - uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: optimized-production-probe
-          path: |
-            verification.log
-            probe.log
-            probe-output
-            probe-results/production-probe.json
-          if-no-files-found: warn
-      - name: Save probe result on feature branch
+          name: two-phase-probe
+          path: probe-results/two-phase-probe.json
+      - name: Save result on feature branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/production-probe.json
+          git add probe-results/two-phase-probe.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record optimized production probe"
+          git commit -m "test: record two-phase Wikidata probe"
           git push
