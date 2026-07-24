@@ -36,6 +36,14 @@ def test_production_probe_covers_complete_reference_month() -> None:
     assert "--limit 1000" in workflow
 
 
+def test_production_probe_builds_and_uploads_validated_release() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata.yml").read_text(encoding="utf-8")
+    assert "from media_catalog_builder.probe_release import build_probe_release" in workflow
+    assert "probe-release-summary.json" in workflow
+    assert "probe-release" in workflow
+    assert "PACKAGE_EXIT_CODE" in workflow
+
+
 def test_codeql_scans_python_on_pull_requests_and_weekly() -> None:
     workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
     assert "pull_request:" in workflow
