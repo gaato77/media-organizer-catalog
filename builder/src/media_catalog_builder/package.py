@@ -86,10 +86,9 @@ def package_zip(source: Path, destination: Path, archive_name: str) -> PackageIn
             compresslevel=9,
             allowZip64=True,
             strict_timestamps=True,
-        ) as archive:
-            with source.open("rb") as input_handle:
-                with archive.open(info, mode="w", force_zip64=False) as output_handle:
-                    _copy_to_archive(input_handle, output_handle)
+        ) as archive, source.open("rb") as input_handle:
+            with archive.open(info, mode="w", force_zip64=False) as output_handle:
+                _copy_to_archive(input_handle, output_handle)
 
         with temporary.open("r+b") as handle:
             handle.flush()
