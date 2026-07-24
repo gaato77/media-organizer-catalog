@@ -39,7 +39,7 @@ def _parse_year(value: str | None) -> int | None:
     return parsed.year
 
 
-def _parse_original_titles(value: str | None) -> tuple[str, ...]:
+def _parse_titles(value: str | None) -> tuple[str, ...]:
     if value is None:
         return ()
     titles: list[str] = []
@@ -63,8 +63,9 @@ def binding_to_source(binding: Binding, media_type: MediaType) -> SourceRecord |
         qid=qid,
         media_type=media_type,
         year=year,
-        original_titles=_parse_original_titles(_binding_value(binding, "originals")),
+        original_titles=_parse_titles(_binding_value(binding, "originals")),
         english_label=_binding_value(binding, "enLabel"),
         spanish_label=_binding_value(binding, "esLabel"),
         modified_at=_binding_value(binding, "modified"),
+        alternate_titles=_parse_titles(_binding_value(binding, "aliases")),
     )
