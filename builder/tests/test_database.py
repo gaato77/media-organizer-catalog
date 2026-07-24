@@ -91,8 +91,7 @@ def test_schema_cannot_store_more_than_four_ranked_names(
             )
         with pytest.raises(sqlite3.IntegrityError):
             connection.execute(
-                "INSERT INTO names(normalized_name, work_qid, name_rank) "
-                "VALUES('fifth', 1, 3)"
+                "INSERT INTO names(normalized_name, work_qid, name_rank) VALUES('fifth', 1, 3)"
             )
     finally:
         connection.close()
