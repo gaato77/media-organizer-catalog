@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 25,
-    "results": [
-      {
-        "cache_bytes": 11303,
-        "elapsed_seconds": 41.584,
-        "media_type": "movie",
-        "records": 25
-      },
-      {
-        "cache_bytes": 10214,
-        "elapsed_seconds": 0.933,
-        "media_type": "series",
-        "records": 25
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 21517,
-    "total_records": 50
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "........................................................................ [ 84%]\n.............                                                            [100%]\n85 passed in 1.06s\nAll checks passed!\n35 files already formatted\nSuccess: no issues found in 16 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": "........................................................................ [ 83%]\n....F.........                                                           [100%]\n=================================== FAILURES ===================================\n____________ test_production_probe_covers_complete_reference_month _____________\n\n    def test_production_probe_covers_complete_reference_month() -> None:\n        workflow = (ROOT / \".github\" / \"workflows\" / \"probe-wikidata.yml\").read_text(\n            encoding=\"utf-8\"\n        )\n>       assert \"timeout-minutes: 30\" in workflow\nE       assert 'timeout-minutes: 30' in '# Atomic release assembly checkpoint verification — final rerun\\nname: Production catalog source probe\\n\\non:\\n  work...code }}\\n        run: |\\n          test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\\n          test \"${PROBE_EXIT_CODE:-1}\" = \"0\"\\n'\n\nbuilder/tests/test_tooling.py:35: AssertionError\n=========================== short test summary info ============================\nFAILED builder/tests/test_tooling.py::test_production_probe_covers_complete_reference_month - assert 'timeout-minutes: 30' in '# Atomic release assembly checkpoint verification — final rerun\\nname: Production catalog source probe\\n\\non:\\n  work...code }}\\n        run: |\\n          test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\\n          test \"${PROBE_EXIT_CODE:-1}\" = \"0\"\\n'\n1 failed, 85 passed in 0.99s\n"
 }
