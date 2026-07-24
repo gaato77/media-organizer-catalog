@@ -3,5 +3,5 @@
   "python": "3.12",
   "status": "failed",
   "verification_exit_code": 1,
-  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.37s\nUP040 Type alias `WorkRow` uses `TypeAlias` annotation instead of the `type` keyword\n  --> builder/src/media_catalog_builder/delta.py:24:1\n   |\n22 |     }\n23 | )\n24 | WorkRow: TypeAlias = tuple[int, int, int, str, tuple[tuple[str, int], ...]]\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\nhelp: Use the `type` keyword\n\nFound 1 error.\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"
+  "verification_log_tail": ".............................................................            [100%]\n61 passed in 0.69s\nUP040 Type alias `WorkRow` uses `TypeAlias` annotation instead of the `type` keyword\n  --> builder/src/media_catalog_builder/delta.py:24:1\n   |\n22 |     }\n23 | )\n24 | WorkRow: TypeAlias = tuple[int, int, int, str, tuple[tuple[str, int], ...]]\n   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n   |\nhelp: Use the `type` keyword\n\nFound 1 error.\nNo fixes available (1 hidden fix can be enabled with the `--unsafe-fixes` option).\n"
 }
