@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol, cast
 
@@ -25,7 +25,7 @@ class JsonHttpClient(Protocol):
 def _utc_timestamp(value: datetime) -> str:
     if value.tzinfo is None or value.utcoffset() is None:
         raise ValueError("interval timestamps must be timezone-aware")
-    utc_value = value.astimezone(timezone.utc).replace(microsecond=0)
+    utc_value = value.astimezone(UTC).replace(microsecond=0)
     return utc_value.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
