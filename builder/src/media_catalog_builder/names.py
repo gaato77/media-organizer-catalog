@@ -31,6 +31,7 @@ def _recognition_names(source: SourceRecord, canonical_title: str) -> tuple[str,
         first_original,
         _clean(source.english_label),
         _clean(source.spanish_label),
+        *source.alternate_titles,
     )
 
     names: list[str] = []
@@ -57,6 +58,8 @@ def to_catalog_record(source: SourceRecord) -> CatalogRecord | None:
     if canonical_title is None:
         canonical_title = _first_latin((source.english_label, source.spanish_label))
     if canonical_title is None:
+        canonical_title = _first_latin(source.alternate_titles)
+    if canonical_title is None:
         return None
 
     names = _recognition_names(source, canonical_title)
@@ -70,3 +73,17 @@ def to_catalog_record(source: SourceRecord) -> CatalogRecord | None:
         canonical_title=canonical_title,
         names=names,
     )
+
+
+def catalog_skip_reason(source: SourceRecord) -> str | None:
+    if to_catalog_record(source) is not None:
+        return None
+    available = (
+        *source.original_titles,
+        source.english_label,
+        source.spanish_label,
+        *source.alternate_titles,
+    )
+    if not any(_clean(value) is not None for value in available):
+        return "missing_titles"
+    return "non_latin_titles_only"
