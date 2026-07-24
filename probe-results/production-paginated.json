@@ -1,7 +1,28 @@
 {
-  "probe_exit_code": null,
+  "probe_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1,
-  "verification_log_tail": "........................................................................ [ 84%]\n.............                                                            [100%]\n85 passed in 0.83s\nAll checks passed!\nunformatted: File would be reformatted\n   --> builder/src/media_catalog_builder/release.py:1:1\n    |\n300 |         parts = line.split(\"  \", 1)\n    -         if len(parts) != 2 or len(parts[0]) != 64 or any(\n    -             character not in \"0123456789abcdef\" for character in parts[0]\n301 +         if (\n302 +             len(parts) != 2\n303 +             or len(parts[0]) != 64\n304 +             or any(character not in \"0123456789abcdef\" for character in parts[0])\n305 |         ):\n    |\n\n1 file would be reformatted, 34 files already formatted\n"
+  "status": "success",
+  "summary": {
+    "end": "2025-02-01T00:00:00+00:00",
+    "limit_per_type": 25,
+    "results": [
+      {
+        "cache_bytes": 11303,
+        "elapsed_seconds": 41.584,
+        "media_type": "movie",
+        "records": 25
+      },
+      {
+        "cache_bytes": 10214,
+        "elapsed_seconds": 0.933,
+        "media_type": "series",
+        "records": 25
+      }
+    ],
+    "start": "2025-01-01T00:00:00+00:00",
+    "total_cache_bytes": 21517,
+    "total_records": 50
+  },
+  "verification_exit_code": 0,
+  "verification_log_tail": "........................................................................ [ 84%]\n.............                                                            [100%]\n85 passed in 1.06s\nAll checks passed!\n35 files already formatted\nSuccess: no issues found in 16 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
 }
