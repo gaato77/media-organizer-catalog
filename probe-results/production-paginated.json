@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 1000,
-    "results": [
-      {
-        "cache_bytes": 418349,
-        "elapsed_seconds": 39.099,
-        "media_type": "movie",
-        "records": 985
-      },
-      {
-        "cache_bytes": 12755,
-        "elapsed_seconds": 0.881,
-        "media_type": "series",
-        "records": 32
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 431104,
-    "total_records": 1017
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "........................................................................ [ 83%]\n..............                                                           [100%]\n86 passed in 0.85s\nAll checks passed!\n35 files already formatted\nSuccess: no issues found in 16 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n"
+  "status": "failed",
+  "verification_exit_code": 2,
+  "verification_log_tail": "\n==================================== ERRORS ====================================\n_________________ ERROR collecting tests/test_probe_release.py _________________\nImportError while importing test module '/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/tests/test_probe_release.py'.\nHint: make sure your test modules/packages have valid Python names.\nTraceback:\n/opt/hostedtoolcache/Python/3.12.13/x64/lib/python3.12/importlib/__init__.py:90: in import_module\n    return _bootstrap._gcd_import(name[level:], package, level)\n           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\nbuilder/tests/test_probe_release.py:8: in <module>\n    from media_catalog_builder.probe_release import build_probe_release\nE   ModuleNotFoundError: No module named 'media_catalog_builder.probe_release'\n=========================== short test summary info ============================\nERROR builder/tests/test_probe_release.py\n!!!!!!!!!!!!!!!!!!!! Interrupted: 1 error during collection !!!!!!!!!!!!!!!!!!!!\n1 error in 0.50s\n"
 }
