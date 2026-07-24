@@ -1,4 +1,4 @@
-name: SPARQL source probe
+name: Optimized catalog source probe
 
 on:
   workflow_dispatch:
@@ -12,107 +12,80 @@ permissions:
   contents: write
 
 jobs:
-  diagnose-wdqs:
+  verify-and-probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install "requests>=2.32,<3"
-      - name: Probe cached-class series query strategy
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+      - run: python -m pip install -e "builder[test]"
+      - name: Verify code on Python 3.12
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          {
+            python -m pytest builder/tests -q &&
+            python -m ruff check builder &&
+            python -m ruff format --check builder &&
+            python -m mypy builder/src/media_catalog_builder
+          } > verification.log 2>&1
+          status=$?
+          cat verification.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Run optimized production probe
+        id: probe
+        if: steps.verify.outputs.exit_code == '0'
+        shell: bash
+        run: |
+          set +e
+          python builder/scripts/probe_wikidata.py \
+            --config builder/config/catalog.toml \
+            --output-dir probe-output \
+            --start 2025-01-01T00:00:00Z \
+            --end 2025-02-01T00:00:00Z \
+            --limit 25 > probe.log 2>&1
+          status=$?
+          cat probe.log
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - name: Build reviewable result
+        env:
+          VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}
+          PROBE_EXIT_CODE: ${{ steps.probe.outputs.exit_code }}
         run: |
           python - <<'PY'
           import json
-          import re
-          import time
+          import os
           from pathlib import Path
 
-          import requests
-
-          endpoint = "https://query.wikidata.org/sparql"
-          headers = {
-              "Accept": "application/sparql-results+json",
-              "User-Agent": "MediaOrganizerCatalog/1.0 (https://github.com/gaato77/media-organizer-catalog)",
-          }
+          verify_exit = int(os.environ.get("VERIFY_EXIT_CODE") or 1)
+          probe_value = os.environ.get("PROBE_EXIT_CODE")
+          probe_exit = int(probe_value) if probe_value else None
           result = {
-              "endpoint": endpoint,
-              "request_method": "POST",
-              "query_shape": "cached class closure followed by exact P31 VALUES",
+              "python": "3.12",
+              "verification_exit_code": verify_exit,
+              "probe_exit_code": probe_exit,
+              "status": "success" if verify_exit == 0 and probe_exit == 0 else "failed",
           }
+          verification_log = Path("verification.log").read_text(
+              encoding="utf-8", errors="replace"
+          )
+          result["verification_log_tail"] = verification_log[-4000:]
+          summary_path = Path("probe-output/summary.json")
+          if summary_path.exists():
+              result["summary"] = json.loads(summary_path.read_text(encoding="utf-8"))
+          elif Path("probe.log").exists():
+              result["probe_log_tail"] = Path("probe.log").read_text(
+                  encoding="utf-8", errors="replace"
+              )[-4000:]
 
-          class_query = """PREFIX wd: <http://www.wikidata.org/entity/>
-          PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-          SELECT DISTINCT ?class WHERE {
-            VALUES ?root { wd:Q5398426 wd:Q1259759 }
-            ?class wdt:P279* ?root .
-          }
-          ORDER BY ?class
-          LIMIT 1000
-          """
-
-          try:
-              started = time.perf_counter()
-              class_response = requests.post(
-                  endpoint,
-                  data={"query": class_query, "format": "json"},
-                  headers=headers,
-                  timeout=70,
-              )
-              result["class_elapsed_seconds"] = round(time.perf_counter() - started, 3)
-              result["class_status_code"] = class_response.status_code
-              class_response.raise_for_status()
-              class_payload = class_response.json()
-              class_bindings = class_payload.get("results", {}).get("bindings", [])
-              qids = []
-              for row in class_bindings:
-                  value = row.get("class", {}).get("value", "")
-                  match = re.fullmatch(r"https?://www\.wikidata\.org/entity/(Q[1-9][0-9]*)", value)
-                  if match:
-                      qids.append(match.group(1))
-              qids = sorted(set(qids), key=lambda value: int(value[1:]))
-              result["class_count"] = len(qids)
-              result["class_hit_limit"] = len(class_bindings) == 1000
-
-              values = " ".join(f"wd:{qid}" for qid in qids)
-              item_query = f"""PREFIX wd: <http://www.wikidata.org/entity/>
-              PREFIX wdt: <http://www.wikidata.org/prop/direct/>
-              PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
-              SELECT DISTINCT ?item ?releaseDate WHERE {{
-                VALUES ?class {{ {values} }}
-                ?item wdt:P31 ?class ;
-                      wdt:P345 ?imdbId ;
-                      wdt:P577 ?releaseDate .
-                FILTER(
-                  ?releaseDate >= "2025-01-01T00:00:00Z"^^xsd:dateTime &&
-                  ?releaseDate < "2025-02-01T00:00:00Z"^^xsd:dateTime
-                )
-              }}
-              LIMIT 1000
-              """
-              started = time.perf_counter()
-              item_response = requests.post(
-                  endpoint,
-                  data={"query": item_query, "format": "json"},
-                  headers=headers,
-                  timeout=70,
-              )
-              result["item_elapsed_seconds"] = round(time.perf_counter() - started, 3)
-              result["item_status_code"] = item_response.status_code
-              result["item_response_bytes"] = len(item_response.content)
-              item_response.raise_for_status()
-              item_payload = item_response.json()
-              item_bindings = item_payload.get("results", {}).get("bindings", [])
-              result["item_count"] = len(item_bindings)
-              result["item_hit_limit"] = len(item_bindings) == 1000
-              result["success"] = True
-          except Exception as exc:
-              result["success"] = False
-              result["exception_type"] = type(exc).__name__
-              result["exception"] = str(exc)[:500]
-
-          target = Path("probe-results/wdqs-cached-classes.json")
+          target = Path("probe-results/production-probe.json")
           target.parent.mkdir(parents=True, exist_ok=True)
           target.write_text(
               json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -121,16 +94,22 @@ jobs:
           print(target.read_text(encoding="utf-8"))
           PY
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
-          name: wdqs-cached-classes-diagnostic
-          path: probe-results/wdqs-cached-classes.json
-      - name: Save diagnostic on feature branch
+          name: optimized-production-probe
+          path: |
+            verification.log
+            probe.log
+            probe-output
+            probe-results/production-probe.json
+          if-no-files-found: warn
+      - name: Save probe result on feature branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add probe-results/wdqs-cached-classes.json
+          git add probe-results/production-probe.json
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "test: record cached-class WDQS diagnostic"
+          git commit -m "test: record optimized production probe"
           git push
