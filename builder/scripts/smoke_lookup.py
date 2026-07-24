@@ -8,7 +8,6 @@ from media_catalog_builder.database import CatalogDatabase
 from media_catalog_builder.model import MediaType, SourceRecord
 from media_catalog_builder.release import build_database_from_sources
 
-
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / "build" / "sample.sqlite"
 SCHEMA = ROOT / "schema" / "catalog-schema-v1.sql"
