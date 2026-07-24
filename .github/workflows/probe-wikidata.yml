@@ -1,4 +1,4 @@
-# SQLite catalog checkpoint verification
+# SQLite catalog checkpoint verification — clean rerun
 name: Production catalog source probe
 
 on:
