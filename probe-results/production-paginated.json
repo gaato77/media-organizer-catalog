@@ -1,28 +1,7 @@
 {
-  "probe_exit_code": 0,
+  "probe_exit_code": null,
   "python": "3.12",
-  "status": "success",
-  "summary": {
-    "end": "2025-02-01T00:00:00+00:00",
-    "limit_per_type": 25,
-    "results": [
-      {
-        "cache_bytes": 11303,
-        "elapsed_seconds": 80.094,
-        "media_type": "movie",
-        "records": 25
-      },
-      {
-        "cache_bytes": 10214,
-        "elapsed_seconds": 0.887,
-        "media_type": "series",
-        "records": 25
-      }
-    ],
-    "start": "2025-01-01T00:00:00+00:00",
-    "total_cache_bytes": 21517,
-    "total_records": 50
-  },
-  "verification_exit_code": 0,
-  "verification_log_tail": "...............................................                          [100%]\n47 passed in 0.34s\nAll checks passed!\n22 files already formatted\nSuccess: no issues found in 11 source files\n"
+  "status": "failed",
+  "verification_exit_code": 1,
+  "verification_log_tail": "........................................................                 [100%]\n56 passed in 0.34s\nI001 [*] Import block is un-sorted or un-formatted\n --> builder/scripts/smoke_lookup.py:1:1\n  |\n1 | / from __future__ import annotations\n2 | |\n3 | | import json\n4 | | from datetime import UTC, datetime\n5 | | from pathlib import Path\n6 | |\n7 | | from media_catalog_builder.database import CatalogDatabase\n8 | | from media_catalog_builder.model import MediaType, SourceRecord\n9 | | from media_catalog_builder.release import build_database_from_sources\n  | |_____________________________________________________________________^\n  |\nhelp: Organize imports\n   |\n10 |\n   -\n11 | ROOT = Path(__file__).resolve().parents[2]\n   |\n\nFound 1 error.\n[*] 1 fixable with the `--fix` option.\n"
 }
