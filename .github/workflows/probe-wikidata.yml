@@ -1,3 +1,4 @@
+# Clean verification rerun after formatting stabilization
 name: Production catalog source probe
 
 on:
