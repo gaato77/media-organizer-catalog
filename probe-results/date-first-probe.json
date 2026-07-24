@@ -1,0 +1,23 @@
+{
+  "candidate_hit_limit": false,
+  "candidate_limit": 5000,
+  "candidate_response_bytes": 464990,
+  "candidate_rows": 1170,
+  "candidate_seconds": 15.511,
+  "endpoint": "https://query.wikidata.org/sparql",
+  "movie_class_bytes": 99275,
+  "movie_class_count": 828,
+  "movie_class_hit_limit": false,
+  "movie_class_seconds": 0.321,
+  "movie_items": 988,
+  "other_items": 132,
+  "overlap_items": 3,
+  "query_shape": "date and IMDb first, local class filtering",
+  "series_class_bytes": 26309,
+  "series_class_count": 218,
+  "series_class_hit_limit": false,
+  "series_class_seconds": 0.15,
+  "series_items": 32,
+  "success": true,
+  "unique_candidate_items": 1147
+}
