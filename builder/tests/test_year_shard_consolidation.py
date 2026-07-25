@@ -24,10 +24,13 @@ def _write_year(root: Path, year: int) -> None:
     series = {"results": {"bindings": [_binding(42, year, "Shared Series")]}}
     (target / "movie.json").write_text(json.dumps(movie), encoding="utf-8")
     (target / "series.json").write_text(json.dumps(series), encoding="utf-8")
-    cache_bytes = sum((target / name).stat().st_size for name in ("movie.json", "series.json"))
+    cache_bytes = sum(
+        (target / name).stat().st_size for name in ("movie.json", "series.json")
+    )
     summary = {
         "probe_schema": 1,
         "year": year,
+        "limit_per_type_per_month": 50000,
         "monthly_source_rows": 2,
         "unique_source_records": 2,
         "duplicate_source_rows": 0,
@@ -47,6 +50,7 @@ def test_consolidation_deduplicates_completed_year_shards(tmp_path: Path) -> Non
     assert summary["annual_source_rows"] == 4
     assert summary["unique_source_records"] == 3
     assert summary["duplicate_source_rows"] == 1
+    assert summary["limit_per_type_per_month"] == 50000
     assert (tmp_path / "movie.json").is_file()
     assert (tmp_path / "series.json").is_file()
 
