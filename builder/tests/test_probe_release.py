@@ -4,6 +4,8 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
+
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.probe_release import build_probe_release
 from media_catalog_builder.release import validate_release
@@ -117,3 +119,35 @@ def test_probe_release_uses_post_merge_canonical_title_for_lookup_case(
         "media_type": "series",
         "canonical_title": "My Little Pony: Friendship Is Magic",
     }
+
+
+def test_probe_release_rejects_records_outside_required_year(tmp_path: Path) -> None:
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "movie.json").write_text(
+        json.dumps(
+            _payload(
+                _binding(10, "2026-01-10T00:00:00Z", "Current Movie"),
+                _binding(11, "2025-12-31T00:00:00Z", "Previous Movie"),
+            )
+        ),
+        encoding="utf-8",
+    )
+    (probe_dir / "series.json").write_text(
+        json.dumps(_payload(_binding(20, "2026-02-01T00:00:00Z", "Current Series"))),
+        encoding="utf-8",
+    )
+    config = CatalogConfig.load(ROOT / "builder" / "config" / "catalog.toml")
+
+    with pytest.raises(ValueError, match="catalog contains records outside required year"):
+        build_probe_release(
+            probe_dir,
+            tmp_path / "work",
+            tmp_path / "release",
+            config=config,
+            schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
+            version="2026.07.25",
+            published_at=datetime(2026, 7, 25, 17, 30, tzinfo=UTC),
+            minimum_app_version="0.1.0",
+            required_year=2026,
+        )
