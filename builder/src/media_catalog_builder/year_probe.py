@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +11,7 @@ from media_catalog_builder.model import MediaType
 from media_catalog_builder.probe import IntervalSource, run_probe
 
 _SEPARATOR = "\u001f"
+type ProbeInterval = tuple[datetime, datetime, bool]
 
 
 def _write_json_atomic(path: Path, payload: object) -> None:
@@ -22,12 +24,49 @@ def _write_json_atomic(path: Path, payload: object) -> None:
     temporary.replace(path)
 
 
-def month_intervals(year: int) -> tuple[tuple[datetime, datetime], ...]:
+def _as_utc(value: datetime, *, label: str) -> datetime:
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise ValueError(f"{label} must be timezone-aware")
+    return value.astimezone(UTC)
+
+
+def _format_utc(value: datetime) -> str:
+    return value.astimezone(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+
+
+def _next_month_start(year: int, month: int) -> datetime:
+    if month == 12:
+        return datetime(year + 1, 1, 1, tzinfo=UTC)
+    return datetime(year, month + 1, 1, tzinfo=UTC)
+
+
+def _probe_intervals(
+    year: int,
+    through: datetime | None,
+) -> tuple[tuple[ProbeInterval, ...], datetime]:
     if not 1 <= year <= 9998:
         raise ValueError("year must be between 1 and 9998")
-    starts = [datetime(year, month, 1, tzinfo=UTC) for month in range(1, 13)]
-    starts.append(datetime(year + 1, 1, 1, tzinfo=UTC))
-    return tuple(zip(starts[:-1], starts[1:], strict=True))
+
+    year_start = datetime(year, 1, 1, tzinfo=UTC)
+    year_boundary = datetime(year + 1, 1, 1, tzinfo=UTC)
+    through_utc = year_boundary if through is None else _as_utc(through, label="through")
+    if not year_start < through_utc <= year_boundary:
+        raise ValueError("through must fall within the selected year boundary")
+
+    intervals: list[ProbeInterval] = []
+    for month in range(1, 13):
+        start = datetime(year, month, 1, tzinfo=UTC)
+        if start >= through_utc:
+            break
+        natural_end = _next_month_start(year, month)
+        end = min(natural_end, through_utc)
+        intervals.append((start, end, end == natural_end))
+    return tuple(intervals), through_utc
+
+
+def month_intervals(year: int) -> tuple[tuple[datetime, datetime], ...]:
+    intervals, _ = _probe_intervals(year, None)
+    return tuple((start, end) for start, end, _complete in intervals)
 
 
 def _read_bindings(path: Path) -> list[dict[str, dict[str, str]]]:
@@ -120,7 +159,15 @@ def _consolidate_caches(paths: Sequence[Path], output_path: Path) -> tuple[int, 
     return monthly_rows, len(bindings)
 
 
-def _load_completed_summary(output_dir: Path) -> dict[str, object] | None:
+def _load_completed_summary(
+    output_dir: Path,
+    *,
+    year: int,
+    through: datetime,
+    refresh_months: frozenset[int],
+) -> dict[str, object] | None:
+    if refresh_months:
+        return None
     summary_path = output_dir / "summary.json"
     if not summary_path.is_file() or not all(
         (output_dir / f"{media_type.name.lower()}.json").is_file()
@@ -128,9 +175,27 @@ def _load_completed_summary(output_dir: Path) -> dict[str, object] | None:
     ):
         return None
     payload = json.loads(summary_path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict) or payload.get("probe_schema") != 1:
+    if (
+        not isinstance(payload, dict)
+        or payload.get("probe_schema") != 1
+        or payload.get("year") != year
+        or payload.get("through") != _format_utc(through)
+    ):
         return None
     return cast(dict[str, object], payload)
+
+
+def _validated_refresh_months(
+    requested: frozenset[int] | None,
+    elapsed: frozenset[int],
+) -> frozenset[int]:
+    refresh_months = frozenset() if requested is None else requested
+    for month in refresh_months:
+        if isinstance(month, bool) or not 1 <= month <= 12:
+            raise ValueError("refresh month must be between 1 and 12")
+        if month not in elapsed:
+            raise ValueError("refresh month is not elapsed")
+    return refresh_months
 
 
 def run_year_probe(
@@ -139,10 +204,21 @@ def run_year_probe(
     year: int,
     *,
     limit: int,
+    through: datetime | None = None,
+    refresh_months: frozenset[int] | None = None,
 ) -> dict[str, object]:
     if not 1 <= limit <= 50000:
         raise ValueError("limit must be between 1 and 50000")
-    completed = _load_completed_summary(output_dir)
+
+    intervals, through_utc = _probe_intervals(year, through)
+    elapsed_months = frozenset(start.month for start, _end, _complete in intervals)
+    selected_refresh_months = _validated_refresh_months(refresh_months, elapsed_months)
+    completed = _load_completed_summary(
+        output_dir,
+        year=year,
+        through=through_utc,
+        refresh_months=selected_refresh_months,
+    )
     if completed is not None:
         return completed
 
@@ -155,9 +231,11 @@ def run_year_probe(
     monthly_cache_bytes = 0
     query_seconds = 0.0
 
-    for start, end in month_intervals(year):
+    for start, end, complete in intervals:
         month_name = f"{start.year:04d}-{start.month:02d}"
         month_dir = output_dir / "months" / month_name
+        if start.month in selected_refresh_months:
+            shutil.rmtree(month_dir, ignore_errors=True)
         month_summary = run_probe(source, month_dir, start, end, limit=limit)
         results = month_summary.get("results")
         if not isinstance(results, list):
@@ -180,6 +258,9 @@ def run_year_probe(
         month_summaries.append(
             {
                 "month": month_name,
+                "window_start": _format_utc(start),
+                "window_end": _format_utc(end),
+                "complete": complete,
                 "total_records": month_summary["total_records"],
                 "cache_bytes": cache_bytes,
                 "results": results,
@@ -202,10 +283,17 @@ def run_year_probe(
         (output_dir / f"{media_type.name.lower()}.json").stat().st_size
         for media_type in (MediaType.MOVIE, MediaType.SERIES)
     )
+    active_partial_month = next(
+        (str(month["month"]) for month in month_summaries if month["complete"] is False),
+        None,
+    )
     summary: dict[str, object] = {
         "probe_schema": 1,
         "year": year,
+        "through": _format_utc(through_utc),
         "month_count": len(month_summaries),
+        "complete_month_count": sum(1 for month in month_summaries if month["complete"] is True),
+        "active_partial_month": active_partial_month,
         "limit_per_type_per_month": limit,
         "months": month_summaries,
         "monthly_source_rows": monthly_source_rows,
