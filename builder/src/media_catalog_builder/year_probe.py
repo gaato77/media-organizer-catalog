@@ -4,7 +4,7 @@ import json
 from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 from media_catalog_builder.model import MediaType
 from media_catalog_builder.probe import IntervalSource, run_probe
@@ -82,7 +82,9 @@ def _merge_entry(
         return left if left_value <= right_value else right
     if key == "modified":
         return left if left_value >= right_value else right
-    return left if (left_value.casefold(), left_value) <= (right_value.casefold(), right_value) else right
+    left_key = (left_value.casefold(), left_value)
+    right_key = (right_value.casefold(), right_value)
+    return left if left_key <= right_key else right
 
 
 def _merge_binding(
