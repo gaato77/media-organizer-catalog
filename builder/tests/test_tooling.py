@@ -78,7 +78,8 @@ def test_decade_probe_reuses_2025_and_packages_2016_through_2025() -> None:
     assert "actions/cache/save@v4" in workflow
     assert "--start-year 2016" in workflow
     assert "--end-year 2025" in workflow
-    assert "--limit 5000" in workflow
+    assert "--limit 50000" in workflow
+    assert "records == 5000" in workflow
     assert 'version="2026.07.24"' in workflow
     assert "build_probe_release" in workflow
     assert "probe-results/years-2016-2025.json" in workflow
