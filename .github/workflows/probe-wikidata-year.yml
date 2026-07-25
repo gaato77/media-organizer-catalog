@@ -1,4 +1,4 @@
-# Resumable full-year source and package verification (valid release version)
+# Resumable full-year source and package verification (final packaging run)
 name: Complete 2025 catalog probe
 
 on:
