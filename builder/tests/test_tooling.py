@@ -59,6 +59,12 @@ def test_annual_probe_is_resumable_and_packages_complete_2025() -> None:
     assert "annual-skip-audit.json" in workflow
 
 
+def test_annual_probe_uses_full_configured_retry_budget() -> None:
+    script = (BUILDER / "scripts" / "probe_wikidata_year.py").read_text(encoding="utf-8")
+    assert "request_retries=config.request_retries" in script
+    assert "request_retries=min(config.request_retries, 2)" not in script
+
+
 def test_codeql_scans_python_on_pull_requests_and_weekly() -> None:
     workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
     assert "pull_request:" in workflow
