@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
@@ -9,7 +10,7 @@ from pathlib import Path
 from media_catalog_builder.classify import binding_to_source
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.model import MediaType, SourceRecord
-from media_catalog_builder.names import catalog_skip_reason, to_catalog_record
+from media_catalog_builder.names import catalog_skip_reason
 from media_catalog_builder.release import (
     assemble_release,
     build_database_from_sources,
@@ -108,24 +109,36 @@ def build_skip_audit(records: Sequence[SourceRecord]) -> dict[str, object]:
     }
 
 
-def _write_lookup_cases(records: Sequence[SourceRecord], path: Path) -> None:
+def _write_lookup_cases(catalog_path: Path, path: Path) -> None:
+    try:
+        connection = sqlite3.connect(f"file:{catalog_path.as_posix()}?mode=ro", uri=True)
+        connection.row_factory = sqlite3.Row
+        try:
+            rows = connection.execute(
+                "SELECT qid, media_type, release_year, canonical_title "
+                "FROM works ORDER BY media_type, qid"
+            ).fetchall()
+        finally:
+            connection.close()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError("invalid probe catalog") from exc
+
     cases: list[dict[str, object]] = []
     selected_types: set[MediaType] = set()
-    for source in sorted(records, key=lambda record: (int(record.media_type), record.qid)):
-        if source.media_type in selected_types:
+    for row in rows:
+        media_type = MediaType(int(row["media_type"]))
+        if media_type in selected_types:
             continue
-        catalog_record = to_catalog_record(source)
-        if catalog_record is None:
-            continue
+        canonical_title = str(row["canonical_title"])
         cases.append(
             {
-                "name": catalog_record.canonical_title,
-                "year": catalog_record.year,
-                "media_type": catalog_record.media_type.name.lower(),
-                "canonical_title": catalog_record.canonical_title,
+                "name": canonical_title,
+                "year": int(row["release_year"]),
+                "media_type": media_type.name.lower(),
+                "canonical_title": canonical_title,
             }
         )
-        selected_types.add(source.media_type)
+        selected_types.add(media_type)
     if not cases:
         raise ValueError("probe records contain no representative lookup case")
     _write_json_atomic(path, cases)
@@ -150,7 +163,6 @@ def build_probe_release(
     catalog_path = work_dir / "catalog.sqlite"
     lookup_cases_path = work_dir / "lookup-cases.json"
     skip_audit_path = work_dir / "skip-audit.json"
-    _write_lookup_cases(records, lookup_cases_path)
     skip_audit = build_skip_audit(records)
     _write_json_atomic(skip_audit_path, skip_audit)
 
@@ -161,6 +173,7 @@ def build_probe_release(
         now=published_at,
         schema_path=schema_path,
     )
+    _write_lookup_cases(catalog_path, lookup_cases_path)
     manifest = assemble_release(
         catalog_path,
         release_dir,
