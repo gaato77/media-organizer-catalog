@@ -255,13 +255,16 @@ def test_fetch_interval_accepts_annual_safety_limit(tmp_path: Path) -> None:
         FakeHttp([]),  # type: ignore[arg-type]
     )
 
-    assert source.fetch_interval(
-        MediaType.MOVIE,
-        datetime(2025, 1, 1, tzinfo=UTC),
-        datetime(2025, 2, 1, tzinfo=UTC),
-        cache,
-        limit=5000,
-    ) == []
+    assert (
+        source.fetch_interval(
+            MediaType.MOVIE,
+            datetime(2025, 1, 1, tzinfo=UTC),
+            datetime(2025, 2, 1, tzinfo=UTC),
+            cache,
+            limit=5000,
+        )
+        == []
+    )
     with pytest.raises(ValueError, match="between 1 and 5000"):
         source.fetch_interval(
             MediaType.MOVIE,
