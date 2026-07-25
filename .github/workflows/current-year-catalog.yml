@@ -1,0 +1,352 @@
+name: Current-year catalog
+
+on:
+  workflow_dispatch:
+    inputs:
+      year:
+        description: "Catalog year; leave empty to use the current UTC year"
+        required: false
+        type: string
+      through:
+        description: "Exclusive UTC end date/time; leave empty to include the current UTC day"
+        required: false
+        type: string
+      refresh_mode:
+        description: "Months to refresh"
+        required: true
+        type: choice
+        default: full
+        options:
+          - daily
+          - weekly
+          - full
+      publish:
+        description: "Publish a durable GitHub Release and update latest.json"
+        required: true
+        type: boolean
+        default: false
+  schedule:
+    - cron: "17 5 * * 1-6"
+    - cron: "41 6 * * 0"
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: current-year-catalog-production
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+
+      - run: python -m pip install -e "builder[test]"
+
+      - name: Resolve current-year plan
+        id: plan
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+          INPUT_YEAR: ${{ inputs.year }}
+          INPUT_THROUGH: ${{ inputs.through }}
+          INPUT_REFRESH_MODE: ${{ inputs.refresh_mode }}
+          INPUT_PUBLISH: ${{ inputs.publish }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from media_catalog_builder.current_year import RefreshMode, resolve_current_year_plan
+
+          now = datetime.now(UTC)
+          event_name = os.environ.get("EVENT_NAME", "")
+          event_schedule = os.environ.get("EVENT_SCHEDULE", "")
+          year_text = os.environ.get("INPUT_YEAR", "").strip()
+          through_text = os.environ.get("INPUT_THROUGH", "").strip()
+
+          if event_name == "schedule":
+              refresh_mode = (
+                  RefreshMode.WEEKLY
+                  if event_schedule == "41 6 * * 0"
+                  else RefreshMode.DAILY
+              )
+              publish = True
+          else:
+              refresh_mode = RefreshMode(
+                  os.environ.get("INPUT_REFRESH_MODE", "").strip() or "full"
+              )
+              publish = os.environ.get("INPUT_PUBLISH", "").lower() == "true"
+
+          selected_year = int(year_text) if year_text else None
+          if through_text:
+              if len(through_text) == 10:
+                  through_text = f"{through_text}T00:00:00Z"
+              through = datetime.fromisoformat(through_text.replace("Z", "+00:00"))
+          else:
+              through = None
+
+          plan = resolve_current_year_plan(
+              now=now,
+              year=selected_year,
+              through=through,
+              refresh_mode=refresh_mode,
+          )
+          published_at = now.replace(microsecond=0)
+          version = published_at.strftime("%Y.%m.%d")
+          through_value = plan.through.isoformat().replace("+00:00", "Z")
+          published_value = published_at.isoformat().replace("+00:00", "Z")
+          refresh_months = [window.month for window in plan.refresh_months]
+          payload = {
+              "year": plan.year,
+              "through": through_value,
+              "version": version,
+              "published_at": published_value,
+              "refresh_mode": plan.refresh_mode.value,
+              "elapsed_months": [window.month for window in plan.elapsed_months],
+              "refresh_months": refresh_months,
+              "publish": publish,
+          }
+          Path("current-year-plan.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"year={plan.year}\n")
+              output.write(f"through={through_value}\n")
+              output.write(f"version={version}\n")
+              output.write(f"published_at={published_value}\n")
+              output.write(
+                  "refresh_months=" + ",".join(str(month) for month in refresh_months) + "\n"
+              )
+              output.write(f"publish={'true' if publish else 'false'}\n")
+              output.write(f"release_tag=current-{plan.year}-{version}\n")
+          print(Path("current-year-plan.json").read_text(encoding="utf-8"))
+          PY
+
+      - name: Restore current-year month cache
+        id: year_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: current-year-probe-output
+          key: current-year-${{ steps.plan.outputs.year }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            current-year-${{ steps.plan.outputs.year }}-
+
+      - name: Probe elapsed current-year months
+        id: probe
+        continue-on-error: true
+        shell: bash
+        env:
+          YEAR: ${{ steps.plan.outputs.year }}
+          THROUGH: ${{ steps.plan.outputs.through }}
+          REFRESH_MONTHS: ${{ steps.plan.outputs.refresh_months }}
+        run: |
+          set -euo pipefail
+          arguments=(
+            --config builder/config/catalog.toml
+            --output-dir current-year-probe-output
+            --year "${YEAR}"
+            --through "${THROUGH}"
+            --limit 50000
+          )
+          IFS=',' read -ra months <<< "${REFRESH_MONTHS}"
+          for month in "${months[@]}"; do
+            if [ -n "${month}" ]; then
+              arguments+=(--refresh-month "${month}")
+            fi
+          done
+          python builder/scripts/probe_wikidata_year.py "${arguments[@]}" \
+            | tee current-year-probe.log
+
+      - name: Save current-year month cache
+        if: always()
+        continue-on-error: true
+        uses: actions/cache/save@v4
+        with:
+          path: current-year-probe-output
+          key: current-year-${{ steps.plan.outputs.year }}-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Build and validate current-year package
+        id: package
+        if: steps.probe.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          YEAR: ${{ steps.plan.outputs.year }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          PUBLISHED_AT: ${{ steps.plan.outputs.published_at }}
+        run: |
+          rm -rf current-year-release current-year-release-work
+          python - <<'PY' > current-year-package.log 2>&1
+          import json
+          import os
+          import shutil
+          from datetime import datetime
+          from pathlib import Path
+
+          from media_catalog_builder.config import CatalogConfig
+          from media_catalog_builder.probe_release import build_probe_release
+
+          year = int(os.environ["YEAR"])
+          version = os.environ["VERSION"]
+          published_at = datetime.fromisoformat(
+              os.environ["PUBLISHED_AT"].replace("Z", "+00:00")
+          )
+          config = CatalogConfig.load(Path("builder/config/catalog.toml"))
+          release_summary = build_probe_release(
+              Path("current-year-probe-output"),
+              Path("current-year-release-work"),
+              Path("current-year-release"),
+              config=config,
+              schema_path=Path("schema/catalog-schema-v1.sql"),
+              version=version,
+              published_at=published_at,
+              minimum_app_version="0.1.0",
+              required_year=year,
+          )
+          source_summary = json.loads(
+              Path("current-year-probe-output/summary.json").read_text(encoding="utf-8")
+          )
+          combined = {"source": source_summary, "release": release_summary}
+          Path("current-year-release-summary.json").write_text(
+              json.dumps(combined, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          shutil.copyfile(
+              "current-year-probe-output/summary.json",
+              "current-year-source-summary.json",
+          )
+          shutil.copyfile(
+              "current-year-release-work/skip-audit.json",
+              "current-year-skip-audit.json",
+          )
+          print(Path("current-year-release-summary.json").read_text(encoding="utf-8"))
+          PY
+          cat current-year-package.log
+
+      - name: Upload current-year catalog diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-year-catalog-diagnostics-${{ steps.plan.outputs.year }}-${{ steps.plan.outputs.version }}
+          path: |
+            current-year-plan.json
+            current-year-probe.log
+            current-year-package.log
+            current-year-probe-output/summary.json
+            current-year-source-summary.json
+            current-year-release-summary.json
+            current-year-skip-audit.json
+            current-year-release-work
+            current-year-release
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload validated current-year package artifact
+        if: always() && steps.package.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: current-year-catalog-${{ steps.plan.outputs.year }}-${{ steps.plan.outputs.version }}
+          path: |
+            current-year-release
+            current-year-release-work/catalog.sqlite
+            current-year-release-work/lookup-cases.json
+            current-year-release-work/skip-audit.json
+            current-year-release-summary.json
+            current-year-source-summary.json
+            current-year-skip-audit.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publish validated current-year release
+        id: publish_release
+        if: always() && steps.plan.outputs.publish == 'true' && steps.package.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
+          YEAR: ${{ steps.plan.outputs.year }}
+          VERSION: ${{ steps.plan.outputs.version }}
+        run: |
+          set -euo pipefail
+          assets=(
+            current-year-release/*
+            current-year-release-summary.json
+            current-year-source-summary.json
+            current-year-skip-audit.json
+          )
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
+          else
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --target "${GITHUB_SHA}" \
+              --title "Current-year catalog ${YEAR} — ${VERSION}" \
+              --notes "Validated current-year movie and series catalog through the configured UTC boundary."
+          fi
+
+      - name: Update stable current catalog pointer
+        id: update_pointer
+        if: always() && steps.publish_release.outcome == 'success'
+        shell: bash
+        env:
+          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
+          YEAR: ${{ steps.plan.outputs.year }}
+          VERSION: ${{ steps.plan.outputs.version }}
+          PUBLISHED_AT: ${{ steps.plan.outputs.published_at }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from media_catalog_builder.current_release import LatestCatalog, write_latest_atomic
+
+          manifest = json.loads(
+              Path("current-year-release/manifest.json").read_text(encoding="utf-8")
+          )
+          latest = LatestCatalog(
+              year=int(os.environ["YEAR"]),
+              version=os.environ["VERSION"],
+              published_at=os.environ["PUBLISHED_AT"],
+              release_tag=os.environ["RELEASE_TAG"],
+              manifest_asset="manifest.json",
+              full_sha256=str(manifest["full"]["sha256"]),
+          )
+          write_latest_atomic(Path("catalog/current/latest.json"), latest)
+          PY
+          git add catalog/current/latest.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "catalog: publish current-year ${VERSION}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+
+      - name: Fail after preserving diagnostics
+        if: >-
+          always() && (
+            steps.probe.outcome != 'success' ||
+            steps.package.outcome != 'success' ||
+            (steps.plan.outputs.publish == 'true' && steps.publish_release.outcome != 'success') ||
+            (steps.plan.outputs.publish == 'true' && steps.update_pointer.outcome != 'success')
+          )
+        run: exit 1
