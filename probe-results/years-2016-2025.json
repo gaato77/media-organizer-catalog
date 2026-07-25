@@ -1,9 +1,160 @@
 {
-  "multi-year-probe_tail": "Traceback (most recent call last):\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/scripts/probe_wikidata_multi_year.py\", line 45, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/scripts/probe_wikidata_multi_year.py\", line 33, in main\n    summary = run_multi_year_probe(\n              ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/multi_year_probe.py\", line 74, in run_multi_year_probe\n    raise ValueError(\"limit must be between 1 and 5000\")\nValueError: limit must be between 1 and 5000\n",
-  "multi-year-verification_tail": "........................................................................ [ 69%]\n...............................                                          [100%]\n103 passed in 1.33s\nAll checks passed!\n44 files already formatted\nSuccess: no issues found in 19 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n",
-  "multi_year_probe_exit_code": 1,
-  "package_exit_code": null,
+  "multi_year_probe_exit_code": 0,
+  "package_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
+  "release": {
+    "baseline_skipped_records": 2387,
+    "by_remaining_reason": {
+      "missing_titles": 2108,
+      "non_latin_titles_only": 243
+    },
+    "catalog_records": 50024,
+    "compressed_bytes": 4312086,
+    "database_bytes": 7540736,
+    "recovered_qids": [
+      "Q15927133",
+      "Q20496990",
+      "Q24687400",
+      "Q24707924",
+      "Q26885217",
+      "Q27991227",
+      "Q28536668",
+      "Q29639917",
+      "Q31174052",
+      "Q43383535",
+      "Q48674035",
+      "Q54924330",
+      "Q57618423",
+      "Q91259953",
+      "Q107105075",
+      "Q108995184",
+      "Q110895861",
+      "Q111781383",
+      "Q112062052",
+      "Q113381694",
+      "Q113834780",
+      "Q115878911",
+      "Q116051258",
+      "Q116981453",
+      "Q119439843",
+      "Q120379278",
+      "Q121365761",
+      "Q124642811",
+      "Q125491143",
+      "Q129415733",
+      "Q131412606",
+      "Q132797850",
+      "Q133383315",
+      "Q134309014",
+      "Q136346116",
+      "Q139679343"
+    ],
+    "recovered_records": 36,
+    "release_files": [
+      "catalog-full-2026.07.24.sqlite.zip",
+      "checksums.sha256",
+      "manifest.json"
+    ],
+    "remaining_skipped_records": 2351,
+    "skip_audit_file": "skip-audit.json",
+    "skipped_records": 2351,
+    "source_records": 52375
+  },
+  "source": {
+    "annual_cache_bytes": 39613765,
+    "annual_source_rows": 56323,
+    "consolidated_cache_bytes": 36585355,
+    "duplicate_source_rows": 3947,
+    "end_year": 2025,
+    "limit_per_type_per_month": 50000,
+    "probe_schema": 2,
+    "query_seconds": 3498.61,
+    "start_year": 2016,
+    "unique_source_records": 52376,
+    "year_count": 10,
+    "years": [
+      {
+        "consolidated_cache_bytes": 7130907,
+        "duplicate_source_rows": 648,
+        "monthly_source_rows": 11084,
+        "query_seconds": 404.14,
+        "unique_source_records": 10436,
+        "year": 2016
+      },
+      {
+        "consolidated_cache_bytes": 4903484,
+        "duplicate_source_rows": 705,
+        "monthly_source_rows": 7552,
+        "query_seconds": 473.56,
+        "unique_source_records": 6847,
+        "year": 2017
+      },
+      {
+        "consolidated_cache_bytes": 4734157,
+        "duplicate_source_rows": 911,
+        "monthly_source_rows": 7575,
+        "query_seconds": 523.48,
+        "unique_source_records": 6664,
+        "year": 2018
+      },
+      {
+        "consolidated_cache_bytes": 4325850,
+        "duplicate_source_rows": 916,
+        "monthly_source_rows": 7021,
+        "query_seconds": 472.19,
+        "unique_source_records": 6105,
+        "year": 2019
+      },
+      {
+        "consolidated_cache_bytes": 3152282,
+        "duplicate_source_rows": 510,
+        "monthly_source_rows": 4887,
+        "query_seconds": 333.908,
+        "unique_source_records": 4377,
+        "year": 2020
+      },
+      {
+        "consolidated_cache_bytes": 3287449,
+        "duplicate_source_rows": 610,
+        "monthly_source_rows": 5210,
+        "query_seconds": 333.084,
+        "unique_source_records": 4600,
+        "year": 2021
+      },
+      {
+        "consolidated_cache_bytes": 3553846,
+        "duplicate_source_rows": 739,
+        "monthly_source_rows": 5728,
+        "query_seconds": 338.199,
+        "unique_source_records": 4989,
+        "year": 2022
+      },
+      {
+        "consolidated_cache_bytes": 3253531,
+        "duplicate_source_rows": 835,
+        "monthly_source_rows": 5471,
+        "query_seconds": 296.879,
+        "unique_source_records": 4636,
+        "year": 2023
+      },
+      {
+        "consolidated_cache_bytes": 2892561,
+        "duplicate_source_rows": 650,
+        "monthly_source_rows": 4833,
+        "query_seconds": 322.981,
+        "unique_source_records": 4183,
+        "year": 2024
+      },
+      {
+        "consolidated_cache_bytes": 2379698,
+        "duplicate_source_rows": 628,
+        "monthly_source_rows": 4114,
+        "query_seconds": 0.189,
+        "unique_source_records": 3486,
+        "year": 2025
+      }
+    ]
+  },
+  "status": "success",
   "verification_exit_code": 0
 }
