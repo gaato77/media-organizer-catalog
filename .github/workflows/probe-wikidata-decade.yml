@@ -3,6 +3,11 @@ name: Complete 2016-2025 catalog probe
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/probe-wikidata-decade.yml
 
 permissions:
   contents: read
