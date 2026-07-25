@@ -218,7 +218,7 @@ Wikidata
 - Build a partial-year fixture containing completed and active months.
 - Rebuild with a newly added title and verify the full package contains it.
 - Build a second version and apply its delta to the first version.
-- Verify the delta result is byte-equivalent or logically equivalent to the new catalog according to the release validator.
+- Verify the delta-applied database is logically equivalent to the new full database using the release validator; byte-for-byte SQLite equality is not required.
 - Simulate a failed release upload and confirm `latest.json` still references the prior release.
 
 ## Acceptance criteria
