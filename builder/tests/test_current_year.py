@@ -57,12 +57,25 @@ def test_manual_recovery_plan_accepts_explicit_year_and_through() -> None:
     assert plan.elapsed_months[-1].complete is False
 
 
-def test_plan_rejects_through_outside_selected_year() -> None:
-    with pytest.raises(ValueError, match="through must fall within the selected year"):
+def test_plan_accepts_next_year_boundary_for_complete_year() -> None:
+    plan = resolve_current_year_plan(
+        now=datetime(2027, 1, 2, tzinfo=UTC),
+        year=2026,
+        through=datetime(2027, 1, 1, tzinfo=UTC),
+        refresh_mode=RefreshMode.FULL,
+    )
+
+    assert len(plan.elapsed_months) == 12
+    assert all(window.complete for window in plan.elapsed_months)
+    assert plan.elapsed_months[-1].end == datetime(2027, 1, 1, tzinfo=UTC)
+
+
+def test_plan_rejects_through_after_selected_year_boundary() -> None:
+    with pytest.raises(ValueError, match="through must fall within the selected year boundary"):
         resolve_current_year_plan(
             now=datetime(2026, 7, 25, tzinfo=UTC),
             year=2026,
-            through=datetime(2027, 1, 1, tzinfo=UTC),
+            through=datetime(2027, 1, 2, tzinfo=UTC),
             refresh_mode=RefreshMode.DAILY,
         )
 
