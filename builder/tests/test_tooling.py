@@ -95,6 +95,36 @@ def test_decade_probe_reuses_2025_and_packages_2016_through_2025() -> None:
     assert "multi-year-skip-audit.json" in workflow
 
 
+def test_1950_2015_probe_is_manual_resumable_and_packages_complete_range() -> None:
+    workflow = (
+        ROOT / ".github" / "workflows" / "probe-wikidata-1950-2015.yml"
+    ).read_text(encoding="utf-8")
+    assert "workflow_dispatch:" in workflow
+    assert "\n  push:" not in workflow
+    assert "shards:" in workflow
+    assert "consolidate:" in workflow
+    assert "max-parallel: 2" in workflow
+    assert "fail-fast: false" in workflow
+    year_lines = [
+        line.strip() for line in workflow.splitlines() if line.startswith("          - ")
+    ]
+    assert year_lines == [f"- {year}" for year in range(1950, 2016)]
+    assert "year-probe-${{ matrix.year }}-" in workflow
+    assert "actions/cache/restore@v4" in workflow
+    assert "actions/cache/save@v4" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "needs: shards" in workflow
+    assert "probe_wikidata_year.py" in workflow
+    assert "consolidate_year_shards.py" in workflow
+    assert "probe_wikidata_multi_year.py" not in workflow
+    assert "--limit 50000" in workflow
+    assert "--start-year 1950" in workflow
+    assert "--end-year 2015" in workflow
+    assert "build_probe_release" in workflow
+    assert "complete-1950-2015-catalog-probe" in workflow
+
+
 def test_codeql_scans_python_on_pull_requests_and_weekly() -> None:
     workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
     assert "pull_request:" in workflow
