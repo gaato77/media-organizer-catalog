@@ -105,11 +105,7 @@ def test_1950_2015_probe_is_manual_resumable_and_packages_complete_range() -> No
     assert "consolidate:" in workflow
     assert "max-parallel: 2" in workflow
     assert "fail-fast: false" in workflow
-    year_lines = [
-        line.strip()
-        for line in workflow.splitlines()
-        if line.startswith("          - ")
-    ]
+    year_lines = [line.strip() for line in workflow.splitlines() if line.startswith("          - ")]
     assert year_lines == [f"- {year}" for year in range(1950, 2016)]
     assert "year-probe-${{ matrix.year }}-" in workflow
     assert "actions/cache/restore@v4" in workflow
