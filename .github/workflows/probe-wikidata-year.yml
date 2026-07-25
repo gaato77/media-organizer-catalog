@@ -1,3 +1,4 @@
+# Resumable full-year source and package verification
 name: Complete 2025 catalog probe
 
 on:
@@ -58,7 +59,7 @@ jobs:
 
       - name: Run resumable complete 2025 probe
         id: annual_probe
-        if: steps.verify.outputs.exit_code == '0'
+        if: ${{ steps.verify.outputs.exit_code == '0' }}
         shell: bash
         run: |
           set +e
@@ -86,7 +87,7 @@ jobs:
 
       - name: Build and validate complete 2025 package
         id: package_probe
-        if: steps.annual_probe.outputs.exit_code == '0'
+        if: ${{ steps.verify.outputs.exit_code == '0' && steps.annual_probe.outputs.exit_code == '0' }}
         shell: bash
         run: |
           set +e
