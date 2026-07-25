@@ -26,7 +26,7 @@ def main() -> int:
         user_agent=config.user_agent,
         timeout_seconds=min(float(config.request_timeout_seconds), 70.0),
         request_interval_seconds=max(config.request_interval_seconds, 1.0),
-        request_retries=min(config.request_retries, 2),
+        request_retries=config.request_retries,
     )
     source = WikidataSource(config.sparql_endpoint, http)
     summary = run_year_probe(
