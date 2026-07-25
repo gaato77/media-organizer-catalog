@@ -60,6 +60,7 @@ jobs:
             --start-year 1950 \
             --end-year 2015 | tee multi-year-consolidation.log
 
+      # Representative lookup cases are derived from the final merged SQLite catalog.
       - name: Build and validate the recovered package
         id: package
         continue-on-error: true
