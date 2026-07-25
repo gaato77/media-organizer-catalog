@@ -71,18 +71,27 @@ def test_decade_probe_reuses_2025_and_packages_2016_through_2025() -> None:
     workflow = (ROOT / ".github" / "workflows" / "probe-wikidata-decade.yml").read_text(
         encoding="utf-8"
     )
-    assert "timeout-minutes: 240" in workflow
+    assert "workflow_dispatch:" in workflow
+    assert "\n  push:" not in workflow
+    assert "shards:" in workflow
+    assert "consolidate:" in workflow
+    assert "matrix:" in workflow
+    assert "max-parallel: 2" in workflow
+    for year in range(2016, 2026):
+        assert f"- {year}" in workflow
+    assert "year-probe-${{ matrix.year }}-" in workflow
     assert "annual-2025-" in workflow
-    assert "multi-year-2016-2025-" in workflow
     assert "actions/cache/restore@v4" in workflow
     assert "actions/cache/save@v4" in workflow
-    assert "--start-year 2016" in workflow
-    assert "--end-year 2025" in workflow
+    assert "actions/upload-artifact@v4" in workflow
+    assert "actions/download-artifact@v4" in workflow
+    assert "needs: shards" in workflow
+    assert "probe_wikidata_year.py" in workflow
+    assert "consolidate_year_shards.py" in workflow
+    assert "probe_wikidata_multi_year.py" not in workflow
     assert "--limit 50000" in workflow
-    assert "records == 5000" in workflow
     assert 'version="2026.07.24"' in workflow
     assert "build_probe_release" in workflow
-    assert "probe-results/years-2016-2025.json" in workflow
     assert "multi-year-skip-audit.json" in workflow
 
 
