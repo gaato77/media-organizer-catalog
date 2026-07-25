@@ -67,6 +67,24 @@ def test_annual_probe_uses_full_configured_retry_budget() -> None:
     assert "request_retries=min(config.request_retries, 2)" not in script
 
 
+def test_decade_probe_reuses_2025_and_packages_2016_through_2025() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata-decade.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "timeout-minutes: 240" in workflow
+    assert "annual-2025-" in workflow
+    assert "multi-year-2016-2025-" in workflow
+    assert "actions/cache/restore@v4" in workflow
+    assert "actions/cache/save@v4" in workflow
+    assert "--start-year 2016" in workflow
+    assert "--end-year 2025" in workflow
+    assert "--limit 5000" in workflow
+    assert 'version="2026.07.24"' in workflow
+    assert "build_probe_release" in workflow
+    assert "probe-results/years-2016-2025.json" in workflow
+    assert "multi-year-skip-audit.json" in workflow
+
+
 def test_codeql_scans_python_on_pull_requests_and_weekly() -> None:
     workflow = (ROOT / ".github" / "workflows" / "codeql.yml").read_text(encoding="utf-8")
     assert "pull_request:" in workflow
