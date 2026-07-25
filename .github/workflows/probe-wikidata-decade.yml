@@ -1,4 +1,4 @@
-# Resumable ten-year source and package verification
+# Resumable ten-year source and package verification (50k ceiling)
 name: Complete 2016-2025 catalog probe
 
 on:
