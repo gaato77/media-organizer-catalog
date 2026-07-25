@@ -145,6 +145,23 @@ def _write_lookup_cases(catalog_path: Path, path: Path) -> None:
     _write_json_atomic(path, cases)
 
 
+def _filter_required_year(
+    records: Sequence[SourceRecord], required_year: int | None
+) -> tuple[list[SourceRecord], dict[str, int]]:
+    if required_year is None:
+        return list(records), {}
+
+    included: list[SourceRecord] = []
+    excluded_by_year: dict[str, int] = {}
+    for record in records:
+        if record.year == required_year:
+            included.append(record)
+        else:
+            year = str(record.year)
+            excluded_by_year[year] = excluded_by_year.get(year, 0) + 1
+    return included, dict(sorted(excluded_by_year.items()))
+
+
 def build_probe_release(
     probe_dir: Path,
     work_dir: Path,
@@ -157,10 +174,11 @@ def build_probe_release(
     minimum_app_version: str,
     required_year: int | None = None,
 ) -> dict[str, object]:
-    records = [
+    source_records = [
         *_load_cached_records(probe_dir / "movie.json", MediaType.MOVIE),
         *_load_cached_records(probe_dir / "series.json", MediaType.SERIES),
     ]
+    records, excluded_other_years = _filter_required_year(source_records, required_year)
     work_dir.mkdir(parents=True, exist_ok=True)
     catalog_path = work_dir / "catalog.sqlite"
     lookup_cases_path = work_dir / "lookup-cases.json"
@@ -195,7 +213,9 @@ def build_probe_release(
 
     release_files = sorted(path.name for path in release_dir.iterdir() if path.is_file())
     return {
-        "source_records": len(records),
+        "source_records": len(source_records),
+        "excluded_other_year_records": sum(excluded_other_years.values()),
+        "excluded_other_years": excluded_other_years,
         "catalog_records": stats.catalog_records,
         "skipped_records": stats.skipped_records,
         "baseline_skipped_records": skip_audit["baseline_skipped_records"],
