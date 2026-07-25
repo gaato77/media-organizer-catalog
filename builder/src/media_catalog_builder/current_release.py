@@ -67,11 +67,17 @@ class LatestCatalog:
             raise ValueError("catalog year must be between 1 and 9999")
         _validate_version(self.version)
         _validate_published_at(self.published_at)
-        if not self.release_tag or self.release_tag != self.release_tag.strip() or "\x00" in self.release_tag:
+        if (
+            not self.release_tag
+            or self.release_tag != self.release_tag.strip()
+            or "\x00" in self.release_tag
+        ):
             raise ValueError("release tag is invalid")
         _validate_asset_name(self.manifest_asset)
         if _SHA256.fullmatch(self.full_sha256) is None:
-            raise ValueError("full catalog SHA-256 must contain 64 lowercase hexadecimal characters")
+            raise ValueError(
+                "full catalog SHA-256 must contain 64 lowercase hexadecimal characters"
+            )
 
     def to_dict(self) -> JsonObject:
         return {
@@ -112,10 +118,13 @@ def write_latest_atomic(path: Path, latest: LatestCatalog) -> None:
     temporary = path.with_name(f"{path.name}.tmp")
     temporary.unlink(missing_ok=True)
     try:
-        temporary.write_text(
-            json.dumps(latest.to_dict(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-            encoding="utf-8",
+        payload = json.dumps(
+            latest.to_dict(),
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
         )
+        temporary.write_text(payload + "\n", encoding="utf-8")
         with temporary.open("r+b") as handle:
             handle.flush()
             os.fsync(handle.fileno())
