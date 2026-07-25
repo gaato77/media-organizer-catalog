@@ -54,6 +54,8 @@ def test_annual_probe_is_resumable_and_packages_complete_2025() -> None:
     assert "if: always()" in workflow
     assert "--year 2025" in workflow
     assert "--limit 5000" in workflow
+    assert 'version="2026.07.24"' in workflow
+    assert "year-2025" not in workflow
     assert "build_probe_release" in workflow
     assert "probe-results/year-2025.json" in workflow
     assert "annual-skip-audit.json" in workflow
