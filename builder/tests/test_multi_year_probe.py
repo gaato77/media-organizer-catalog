@@ -61,6 +61,26 @@ def test_year_range_is_inclusive_and_validated() -> None:
         year_range(2025, 2016)
 
 
+def test_multi_year_probe_accepts_large_year_precision_safety_limit(tmp_path: Path) -> None:
+    summary = run_multi_year_probe(
+        FakeMultiYearSource(),
+        tmp_path / "valid",
+        2025,
+        2025,
+        limit=50000,
+    )
+
+    assert summary["limit_per_type_per_month"] == 50000
+    with pytest.raises(ValueError, match="between 1 and 50000"):
+        run_multi_year_probe(
+            FakeMultiYearSource(),
+            tmp_path / "invalid",
+            2025,
+            2025,
+            limit=50001,
+        )
+
+
 def test_multi_year_probe_deduplicates_years_and_reuses_completed_cache(
     tmp_path: Path,
 ) -> None:
