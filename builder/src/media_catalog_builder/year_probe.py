@@ -140,8 +140,8 @@ def run_year_probe(
     *,
     limit: int,
 ) -> dict[str, object]:
-    if not 1 <= limit <= 5000:
-        raise ValueError("limit must be between 1 and 5000")
+    if not 1 <= limit <= 50000:
+        raise ValueError("limit must be between 1 and 50000")
     completed = _load_completed_summary(output_dir)
     if completed is not None:
         return completed
