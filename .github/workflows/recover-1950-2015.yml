@@ -83,7 +83,7 @@ jobs:
               Path("multi-year-release"),
               config=config,
               schema_path=Path("schema/catalog-schema-v1.sql"),
-              version="2026.07.25-recovered",
+              version="2026.07.25",
               published_at=datetime(2026, 7, 25, 17, 30, tzinfo=UTC),
               minimum_app_version="0.1.0",
           )
@@ -110,14 +110,18 @@ jobs:
         if: always()
         shell: bash
         run: |
+          set +e
           {
             echo "Recovery source run: 30157271026"
             echo "Package outcome: ${{ steps.package.outcome }}"
             echo "Package exit code: ${{ steps.package.outputs.exit_code }}"
             echo
-            find multi-year-probe-output multi-year-release-work multi-year-release \
-              -maxdepth 3 -type f -printf '%s %p\n' 2>/dev/null | sort -n
           } > recovery-files.txt
+          for directory in multi-year-probe-output multi-year-release-work multi-year-release; do
+            if [ -d "${directory}" ]; then
+              find "${directory}" -maxdepth 3 -type f -printf '%s %p\n'
+            fi
+          done | sort -n >> recovery-files.txt
           cat recovery-files.txt
 
       - name: Upload recovery diagnostics
@@ -138,7 +142,7 @@ jobs:
           retention-days: 14
 
       - name: Upload recovered catalog package
-        if: steps.package.outcome == 'success'
+        if: always() && steps.package.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: complete-1950-2015-catalog-recovered
@@ -155,5 +159,5 @@ jobs:
           retention-days: 14
 
       - name: Fail after preserving diagnostics
-        if: steps.package.outcome != 'success'
+        if: always() && steps.package.outcome != 'success'
         run: exit 1
