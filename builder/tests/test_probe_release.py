@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-
-import pytest
 
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.probe_release import build_probe_release
@@ -121,7 +120,7 @@ def test_probe_release_uses_post_merge_canonical_title_for_lookup_case(
     }
 
 
-def test_probe_release_rejects_records_outside_required_year(tmp_path: Path) -> None:
+def test_probe_release_filters_records_outside_required_year(tmp_path: Path) -> None:
     probe_dir = tmp_path / "probe"
     probe_dir.mkdir()
     (probe_dir / "movie.json").write_text(
@@ -138,16 +137,25 @@ def test_probe_release_rejects_records_outside_required_year(tmp_path: Path) -> 
         encoding="utf-8",
     )
     config = CatalogConfig.load(ROOT / "builder" / "config" / "catalog.toml")
+    work_dir = tmp_path / "work"
 
-    with pytest.raises(ValueError, match="catalog contains records outside required year"):
-        build_probe_release(
-            probe_dir,
-            tmp_path / "work",
-            tmp_path / "release",
-            config=config,
-            schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
-            version="2026.07.25",
-            published_at=datetime(2026, 7, 25, 17, 30, tzinfo=UTC),
-            minimum_app_version="0.1.0",
-            required_year=2026,
-        )
+    summary = build_probe_release(
+        probe_dir,
+        work_dir,
+        tmp_path / "release",
+        config=config,
+        schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
+        version="2026.07.25",
+        published_at=datetime(2026, 7, 25, 17, 30, tzinfo=UTC),
+        minimum_app_version="0.1.0",
+        required_year=2026,
+    )
+
+    assert summary["source_records"] == 3
+    assert summary["excluded_other_year_records"] == 1
+    assert summary["catalog_records"] == 2
+    with sqlite3.connect(work_dir / "catalog.sqlite") as connection:
+        years = connection.execute(
+            "SELECT DISTINCT release_year FROM works ORDER BY release_year"
+        ).fetchall()
+    assert years == [(2026,)]
