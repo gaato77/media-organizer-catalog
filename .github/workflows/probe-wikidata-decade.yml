@@ -60,6 +60,30 @@ jobs:
             cp -a annual-probe-output/. multi-year-probe-output/years/2025/
           fi
 
+      - name: Upgrade legacy 5000-record month cache
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          root = Path("multi-year-probe-output/years")
+          for summary_path in root.glob("*/months/*/summary.json"):
+              payload = json.loads(summary_path.read_text(encoding="utf-8"))
+              saturated = False
+              for result in payload.get("results", []):
+                  records = result.get("records")
+                  media_type = result.get("media_type")
+                  if records == 5000 and media_type in {"movie", "series"}:
+                      (summary_path.parent / f"{media_type}.json").unlink(missing_ok=True)
+                      saturated = True
+              if saturated:
+                  summary_path.unlink(missing_ok=True)
+                  year_dir = summary_path.parents[2]
+                  for name in ("summary.json", "movie.json", "series.json"):
+                      (year_dir / name).unlink(missing_ok=True)
+          PY
+
       - name: Verify multi-year probe code
         id: verify
         shell: bash
@@ -92,7 +116,7 @@ jobs:
             --output-dir multi-year-probe-output \
             --start-year 2016 \
             --end-year 2025 \
-            --limit 5000 > multi-year-probe.log 2>&1
+            --limit 50000 > multi-year-probe.log 2>&1
           status=$?
           cat multi-year-probe.log
           echo "exit_code=$status" >> "$GITHUB_OUTPUT"
