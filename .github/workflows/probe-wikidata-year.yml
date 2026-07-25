@@ -1,4 +1,4 @@
-# Resumable full-year source and package verification (validated)
+# Resumable full-year source and package verification (retry budget 5)
 name: Complete 2025 catalog probe
 
 on:
