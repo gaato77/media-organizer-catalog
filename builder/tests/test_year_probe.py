@@ -122,6 +122,9 @@ def test_year_probe_deduplicates_months_and_reuses_completed_cache(tmp_path: Pat
     assert source.downloads == 24
     assert first == second
     assert first["month_count"] == 12
+    assert first["complete_month_count"] == 12
+    assert first["active_partial_month"] is None
+    assert first["through"] == "2026-01-01T00:00:00Z"
     assert first["monthly_source_rows"] == 26
     assert first["unique_source_records"] == 25
     assert first["duplicate_source_rows"] == 1
@@ -132,6 +135,63 @@ def test_year_probe_deduplicates_months_and_reuses_completed_cache(tmp_path: Pat
     saved = json.loads((tmp_path / "summary.json").read_text(encoding="utf-8"))
     assert saved == first
     assert list(tmp_path.rglob("*.tmp")) == []
+
+
+def test_partial_year_probe_queries_only_elapsed_months(tmp_path: Path) -> None:
+    source = FakeYearSource()
+
+    summary = run_year_probe(
+        source,
+        tmp_path,
+        2026,
+        limit=5000,
+        through=datetime(2026, 3, 15, tzinfo=UTC),
+    )
+
+    assert source.downloads == 6
+    assert summary["month_count"] == 3
+    assert summary["complete_month_count"] == 2
+    assert summary["through"] == "2026-03-15T00:00:00Z"
+    assert summary["active_partial_month"] == "2026-03"
+    assert [month["month"] for month in summary["months"]] == [
+        "2026-01",
+        "2026-02",
+        "2026-03",
+    ]
+
+
+def test_partial_year_probe_rebuilds_only_selected_cached_months(tmp_path: Path) -> None:
+    source = FakeYearSource()
+    through = datetime(2026, 3, 15, tzinfo=UTC)
+
+    run_year_probe(source, tmp_path, 2026, limit=5000, through=through)
+    first_downloads = source.downloads
+
+    run_year_probe(
+        source,
+        tmp_path,
+        2026,
+        limit=5000,
+        through=through,
+        refresh_months=frozenset({2, 3}),
+    )
+
+    assert source.downloads == first_downloads + 4
+    assert (tmp_path / "months" / "2026-01" / "movie.json").is_file()
+    assert (tmp_path / "months" / "2026-02" / "movie.json").is_file()
+    assert (tmp_path / "months" / "2026-03" / "movie.json").is_file()
+
+
+def test_partial_year_probe_rejects_future_refresh_month(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="refresh month is not elapsed"):
+        run_year_probe(
+            FakeYearSource(),
+            tmp_path,
+            2026,
+            limit=5000,
+            through=datetime(2026, 3, 15, tzinfo=UTC),
+            refresh_months=frozenset({4}),
+        )
 
 
 def test_year_probe_rejects_saturated_month(tmp_path: Path) -> None:

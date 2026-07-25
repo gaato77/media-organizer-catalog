@@ -7,6 +7,7 @@ from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 
+from media_catalog_builder.catalog_validation import validate_catalog_year
 from media_catalog_builder.classify import binding_to_source
 from media_catalog_builder.config import CatalogConfig
 from media_catalog_builder.model import MediaType, SourceRecord
@@ -154,6 +155,7 @@ def build_probe_release(
     version: str,
     published_at: datetime,
     minimum_app_version: str,
+    required_year: int | None = None,
 ) -> dict[str, object]:
     records = [
         *_load_cached_records(probe_dir / "movie.json", MediaType.MOVIE),
@@ -173,6 +175,8 @@ def build_probe_release(
         now=published_at,
         schema_path=schema_path,
     )
+    if required_year is not None:
+        validate_catalog_year(catalog_path, required_year)
     _write_lookup_cases(catalog_path, lookup_cases_path)
     manifest = assemble_release(
         catalog_path,
