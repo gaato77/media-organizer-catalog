@@ -24,9 +24,7 @@ def _write_year(root: Path, year: int) -> None:
     series = {"results": {"bindings": [_binding(42, year, "Shared Series")]}}
     (target / "movie.json").write_text(json.dumps(movie), encoding="utf-8")
     (target / "series.json").write_text(json.dumps(series), encoding="utf-8")
-    cache_bytes = sum(
-        (target / name).stat().st_size for name in ("movie.json", "series.json")
-    )
+    cache_bytes = sum((target / name).stat().st_size for name in ("movie.json", "series.json"))
     summary = {
         "probe_schema": 1,
         "year": year,
