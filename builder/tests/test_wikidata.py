@@ -247,7 +247,7 @@ def test_fetch_interval_reuses_completed_detail_batches_after_interruption(
     assert (tmp_path / "movie.json").exists()
 
 
-def test_fetch_interval_accepts_annual_safety_limit(tmp_path: Path) -> None:
+def test_fetch_interval_accepts_large_year_precision_safety_limit(tmp_path: Path) -> None:
     cache = tmp_path / "movie.json"
     cache.write_text(json.dumps(_detail_payload()), encoding="utf-8")
     source = WikidataSource(
@@ -261,17 +261,17 @@ def test_fetch_interval_accepts_annual_safety_limit(tmp_path: Path) -> None:
             datetime(2025, 1, 1, tzinfo=UTC),
             datetime(2025, 2, 1, tzinfo=UTC),
             cache,
-            limit=5000,
+            limit=50000,
         )
         == []
     )
-    with pytest.raises(ValueError, match="between 1 and 5000"):
+    with pytest.raises(ValueError, match="between 1 and 50000"):
         source.fetch_interval(
             MediaType.MOVIE,
             datetime(2025, 1, 1, tzinfo=UTC),
             datetime(2025, 2, 1, tzinfo=UTC),
             cache,
-            limit=5001,
+            limit=50001,
         )
 
 
