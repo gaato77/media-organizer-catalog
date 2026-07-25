@@ -1,0 +1,9 @@
+{
+  "multi-year-probe_tail": "Traceback (most recent call last):\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/scripts/probe_wikidata_multi_year.py\", line 45, in <module>\n    raise SystemExit(main())\n                     ^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/scripts/probe_wikidata_multi_year.py\", line 33, in main\n    summary = run_multi_year_probe(\n              ^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/multi_year_probe.py\", line 90, in run_multi_year_probe\n    year_summary = run_year_probe(source, year_dir, year, limit=limit)\n                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/home/runner/work/media-organizer-catalog/media-organizer-catalog/builder/src/media_catalog_builder/year_probe.py\", line 172, in run_year_probe\n    raise ValueError(f\"{month_name} reached the monthly limit of {limit}\")\nValueError: 2016-01 reached the monthly limit of 5000\n",
+  "multi-year-verification_tail": "........................................................................ [ 69%]\n...............................                                          [100%]\n103 passed in 4.05s\nAll checks passed!\n44 files already formatted\nSuccess: no issues found in 19 source files\n{\"catalog_records\": 2, \"database_bytes\": 28672, \"integrity\": \"ok\", \"movie\": \"Amélie\", \"series\": \"Example Series\"}\n",
+  "multi_year_probe_exit_code": 1,
+  "package_exit_code": null,
+  "python": "3.12",
+  "status": "failed",
+  "verification_exit_code": 0
+}
