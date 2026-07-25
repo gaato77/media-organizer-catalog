@@ -96,9 +96,9 @@ def test_decade_probe_reuses_2025_and_packages_2016_through_2025() -> None:
 
 
 def test_1950_2015_probe_is_manual_resumable_and_packages_complete_range() -> None:
-    workflow = (
-        ROOT / ".github" / "workflows" / "probe-wikidata-1950-2015.yml"
-    ).read_text(encoding="utf-8")
+    workflow = (ROOT / ".github" / "workflows" / "probe-wikidata-1950-2015.yml").read_text(
+        encoding="utf-8"
+    )
     assert "workflow_dispatch:" in workflow
     assert "\n  push:" not in workflow
     assert "shards:" in workflow
