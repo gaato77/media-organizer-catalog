@@ -26,7 +26,7 @@ jobs:
       - name: Capture Ruff formatting diagnostics
         run: |
           python -m ruff --version > ruff-format-diagnostic.txt
-          python -m ruff format --diff builder >> ruff-format-diagnostic.txt
+          python -m ruff format --diff builder >> ruff-format-diagnostic.txt || true
       - name: Upload Ruff formatting diagnostics
         uses: actions/upload-artifact@v4
         with:
