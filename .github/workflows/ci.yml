@@ -23,6 +23,17 @@ jobs:
         run: python -m pytest builder/tests -q
       - name: Run Ruff linter
         run: python -m ruff check builder
+      - name: Capture Ruff formatting diagnostics
+        run: |
+          python -m ruff --version > ruff-format-diagnostic.txt
+          python -m ruff format --diff builder >> ruff-format-diagnostic.txt
+      - name: Upload Ruff formatting diagnostics
+        uses: actions/upload-artifact@v4
+        with:
+          name: ruff-format-diagnostic
+          path: ruff-format-diagnostic.txt
+          if-no-files-found: error
+          retention-days: 1
       - name: Verify Ruff formatting
         run: python -m ruff format --check builder
       - name: Run mypy
