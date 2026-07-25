@@ -61,22 +61,33 @@ def _required_number(summary: Mapping[str, object], key: str, year: int) -> floa
     return float(value)
 
 
-def run_multi_year_probe(
-    source: IntervalSource,
+def _load_annual_summary(year_dir: Path, year: int) -> dict[str, object]:
+    required = (
+        year_dir / "summary.json",
+        year_dir / "movie.json",
+        year_dir / "series.json",
+    )
+    if not all(path.is_file() for path in required):
+        raise ValueError(f"missing completed annual shard: {year}")
+    try:
+        payload = json.loads(required[0].read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid completed annual shard: {year}") from exc
+    if not isinstance(payload, dict) or payload.get("year") != year:
+        raise ValueError(f"invalid completed annual shard: {year}")
+    return cast(dict[str, object], payload)
+
+
+def consolidate_year_shards(
     output_dir: Path,
     start_year: int,
     end_year: int,
-    *,
-    limit: int,
 ) -> dict[str, object]:
     years = year_range(start_year, end_year)
-    if not 1 <= limit <= 50000:
-        raise ValueError("limit must be between 1 and 50000")
     completed = _load_completed_summary(output_dir, start_year, end_year)
     if completed is not None:
         return completed
 
-    output_dir.mkdir(parents=True, exist_ok=True)
     annual_paths: dict[MediaType, list[Path]] = {
         MediaType.MOVIE: [],
         MediaType.SERIES: [],
@@ -84,17 +95,20 @@ def run_multi_year_probe(
     year_summaries: list[dict[str, object]] = []
     annual_cache_bytes = 0
     query_seconds = 0.0
+    limits: set[int] = set()
 
     for year in years:
         year_dir = output_dir / "years" / str(year)
-        year_summary = run_year_probe(source, year_dir, year, limit=limit)
-        if year_summary.get("year") != year:
-            raise ValueError(f"annual summary has wrong year: {year}")
+        year_summary = _load_annual_summary(year_dir, year)
         unique_records = _required_integer(year_summary, "unique_source_records", year)
         monthly_rows = _required_integer(year_summary, "monthly_source_rows", year)
         duplicate_rows = _required_integer(year_summary, "duplicate_source_rows", year)
         cache_bytes = _required_integer(year_summary, "consolidated_cache_bytes", year)
         elapsed = _required_number(year_summary, "query_seconds", year)
+        limit = year_summary.get("limit_per_type_per_month")
+        if isinstance(limit, int):
+            limits.add(limit)
+
         annual_cache_bytes += cache_bytes
         query_seconds += elapsed
         year_summaries.append(
@@ -110,6 +124,10 @@ def run_multi_year_probe(
         for media_type in (MediaType.MOVIE, MediaType.SERIES):
             annual_paths[media_type].append(year_dir / f"{media_type.name.lower()}.json")
 
+    if len(limits) > 1:
+        raise ValueError("annual shards use inconsistent limits")
+
+    output_dir.mkdir(parents=True, exist_ok=True)
     annual_source_rows = 0
     unique_source_records = 0
     for media_type in (MediaType.MOVIE, MediaType.SERIES):
@@ -129,7 +147,7 @@ def run_multi_year_probe(
         "start_year": start_year,
         "end_year": end_year,
         "year_count": len(years),
-        "limit_per_type_per_month": limit,
+        "limit_per_type_per_month": next(iter(limits)) if limits else 0,
         "years": year_summaries,
         "annual_source_rows": annual_source_rows,
         "unique_source_records": unique_source_records,
@@ -140,3 +158,24 @@ def run_multi_year_probe(
     }
     _write_json_atomic(output_dir / "summary.json", summary)
     return summary
+
+
+def run_multi_year_probe(
+    source: IntervalSource,
+    output_dir: Path,
+    start_year: int,
+    end_year: int,
+    *,
+    limit: int,
+) -> dict[str, object]:
+    years = year_range(start_year, end_year)
+    if not 1 <= limit <= 50000:
+        raise ValueError("limit must be between 1 and 50000")
+    completed = _load_completed_summary(output_dir, start_year, end_year)
+    if completed is not None:
+        return completed
+
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for year in years:
+        run_year_probe(source, output_dir / "years" / str(year), year, limit=limit)
+    return consolidate_year_shards(output_dir, start_year, end_year)
