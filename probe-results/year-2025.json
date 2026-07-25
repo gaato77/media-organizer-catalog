@@ -1,8 +1,273 @@
 {
-  "annual-verification_tail": "................. [ 72%]\n.............F..............                                             [100%]\n=================================== FAILURES ===================================\n__________ test_annual_probe_is_resumable_and_packages_complete_2025 ___________\n\n    def test_annual_probe_is_resumable_and_packages_complete_2025() -> None:\n        workflow = (ROOT / \".github\" / \"workflows\" / \"probe-wikidata-year.yml\").read_text(\n            encoding=\"utf-8\"\n        )\n        assert \"timeout-minutes: 120\" in workflow\n        assert \"actions/cache/restore@v4\" in workflow\n        assert \"actions/cache/save@v4\" in workflow\n        assert \"if: always()\" in workflow\n        assert \"--year 2025\" in workflow\n        assert \"--limit 5000\" in workflow\n        assert 'version=\"2026.07.24\"' in workflow\n>       assert \"year-2025\" not in workflow\nE       assert 'year-2025' not in '# Resumable...-1}\" = \"0\"\\n'\nE         \nE         'year-2025' is contained here:\nE           e-results/year-2025.json\")\nE         ?           +++++++++\nE                     target.parent.mkdir(parents=True, exist_ok=True)\nE                     target.write_text(\nE                         json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + \"\\n\",\nE                         encoding=\"utf-8\",\nE                     )\nE                     print(target.read_text(encoding=\"utf-8\"))\nE                     PY\nE           \nE                 - uses: actions/upload-artifact@v4\nE                   if: always()\nE                   with:\nE                     name: complete-2025-catalog-probe\nE                     path: |\nE                       annual-probe-output\nE                       annual-release\nE                       annual-release-work/catalog.sqlite\nE                       annual-release-work/lookup-cases.json\nE                       annual-release-work/skip-audit.json\nE                       annual-release-summary.json\nE                       annual-skip-audit.json\nE                       annual-verification.log\nE                       annual-probe.log\nE                       annual-package.log\nE                       probe-results/year-2025.json\nE                     if-no-files-found: warn\nE           \nE                 - name: Save annual result on feature branch\nE                   if: always()\nE                   run: |\nE                     git config user.name \"github-actions[bot]\"\nE                     git config user.email \"41898282+github-actions[bot]@users.noreply.github.com\"\nE                     git add probe-results/year-2025.json\nE                     if git diff --cached --quiet; then\nE                       exit 0\nE                     fi\nE                     git commit -m \"test: record complete 2025 catalog probe\"\nE                     git pull --rebase origin feature/compact-catalog-builder\nE                     git push origin HEAD:feature/compact-catalog-builder\nE           \nE                 - name: Enforce successful annual verification and package\nE                   if: always()\nE                   env:\nE                     VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}\nE                     ANNUAL_EXIT_CODE: ${{ steps.annual_probe.outputs.exit_code }}\nE                     PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}\nE                   run: |\nE                     test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\nE                     test \"${ANNUAL_EXIT_CODE:-1}\" = \"0\"\nE                     test \"${PACKAGE_EXIT_CODE:-1}\" = \"0\"\n\nbuilder/tests/test_tooling.py:58: AssertionError\n=========================== short test summary info ============================\nFAILED builder/tests/test_tooling.py::test_annual_probe_is_resumable_and_packages_complete_2025 - assert 'year-2025' not in '# Resumable...-1}\" = \"0\"\\n'\n  \n  'year-2025' is contained here:\n    e-results/year-2025.json\")\n  ?           +++++++++\n              target.parent.mkdir(parents=True, exist_ok=True)\n              target.write_text(\n                  json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True) + \"\\n\",\n                  encoding=\"utf-8\",\n              )\n              print(target.read_text(encoding=\"utf-8\"))\n              PY\n    \n          - uses: actions/upload-artifact@v4\n            if: always()\n            with:\n              name: complete-2025-catalog-probe\n              path: |\n                annual-probe-output\n                annual-release\n                annual-release-work/catalog.sqlite\n                annual-release-work/lookup-cases.json\n                annual-release-work/skip-audit.json\n                annual-release-summary.json\n                annual-skip-audit.json\n                annual-verification.log\n                annual-probe.log\n                annual-package.log\n                probe-results/year-2025.json\n              if-no-files-found: warn\n    \n          - name: Save annual result on feature branch\n            if: always()\n            run: |\n              git config user.name \"github-actions[bot]\"\n              git config user.email \"41898282+github-actions[bot]@users.noreply.github.com\"\n              git add probe-results/year-2025.json\n              if git diff --cached --quiet; then\n                exit 0\n              fi\n              git commit -m \"test: record complete 2025 catalog probe\"\n              git pull --rebase origin feature/compact-catalog-builder\n              git push origin HEAD:feature/compact-catalog-builder\n    \n          - name: Enforce successful annual verification and package\n            if: always()\n            env:\n              VERIFY_EXIT_CODE: ${{ steps.verify.outputs.exit_code }}\n              ANNUAL_EXIT_CODE: ${{ steps.annual_probe.outputs.exit_code }}\n              PACKAGE_EXIT_CODE: ${{ steps.package_probe.outputs.exit_code }}\n            run: |\n              test \"${VERIFY_EXIT_CODE:-1}\" = \"0\"\n              test \"${ANNUAL_EXIT_CODE:-1}\" = \"0\"\n              test \"${PACKAGE_EXIT_CODE:-1}\" = \"0\"\n1 failed, 99 passed in 1.05s\n",
-  "annual_probe_exit_code": null,
-  "package_exit_code": null,
+  "annual_probe_exit_code": 0,
+  "package_exit_code": 0,
   "python": "3.12",
-  "status": "failed",
-  "verification_exit_code": 1
+  "release": {
+    "baseline_skipped_records": 274,
+    "by_remaining_reason": {
+      "missing_titles": 253,
+      "non_latin_titles_only": 19
+    },
+    "catalog_records": 3214,
+    "compressed_bytes": 280438,
+    "database_bytes": 495616,
+    "recovered_qids": [
+      "Q134309014",
+      "Q139679343"
+    ],
+    "recovered_records": 2,
+    "release_files": [
+      "catalog-full-2026.07.24.sqlite.zip",
+      "checksums.sha256",
+      "manifest.json"
+    ],
+    "remaining_skipped_records": 272,
+    "skip_audit_file": "skip-audit.json",
+    "skipped_records": 272,
+    "source_records": 3486
+  },
+  "source": {
+    "consolidated_cache_bytes": 2379698,
+    "duplicate_source_rows": 628,
+    "limit_per_type_per_month": 5000,
+    "month_count": 12,
+    "monthly_cache_bytes": 1789194,
+    "monthly_source_rows": 4114,
+    "months": [
+      {
+        "cache_bytes": 431171,
+        "month": "2025-01",
+        "results": [
+          {
+            "cache_bytes": 418416,
+            "elapsed_seconds": 0.043,
+            "media_type": "movie",
+            "records": 985
+          },
+          {
+            "cache_bytes": 12755,
+            "elapsed_seconds": 0.001,
+            "media_type": "series",
+            "records": 32
+          }
+        ],
+        "total_records": 1017
+      },
+      {
+        "cache_bytes": 132461,
+        "month": "2025-02",
+        "results": [
+          {
+            "cache_bytes": 130010,
+            "elapsed_seconds": 0.013,
+            "media_type": "movie",
+            "records": 297
+          },
+          {
+            "cache_bytes": 2451,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 6
+          }
+        ],
+        "total_records": 303
+      },
+      {
+        "cache_bytes": 132745,
+        "month": "2025-03",
+        "results": [
+          {
+            "cache_bytes": 130937,
+            "elapsed_seconds": 0.022,
+            "media_type": "movie",
+            "records": 297
+          },
+          {
+            "cache_bytes": 1808,
+            "elapsed_seconds": 0.001,
+            "media_type": "series",
+            "records": 4
+          }
+        ],
+        "total_records": 301
+      },
+      {
+        "cache_bytes": 105628,
+        "month": "2025-04",
+        "results": [
+          {
+            "cache_bytes": 103788,
+            "elapsed_seconds": 0.011,
+            "media_type": "movie",
+            "records": 234
+          },
+          {
+            "cache_bytes": 1840,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 4
+          }
+        ],
+        "total_records": 238
+      },
+      {
+        "cache_bytes": 142439,
+        "month": "2025-05",
+        "results": [
+          {
+            "cache_bytes": 140611,
+            "elapsed_seconds": 0.014,
+            "media_type": "movie",
+            "records": 318
+          },
+          {
+            "cache_bytes": 1828,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 4
+          }
+        ],
+        "total_records": 322
+      },
+      {
+        "cache_bytes": 113638,
+        "month": "2025-06",
+        "results": [
+          {
+            "cache_bytes": 110141,
+            "elapsed_seconds": 0.011,
+            "media_type": "movie",
+            "records": 251
+          },
+          {
+            "cache_bytes": 3497,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 8
+          }
+        ],
+        "total_records": 259
+      },
+      {
+        "cache_bytes": 93440,
+        "month": "2025-07",
+        "results": [
+          {
+            "cache_bytes": 91368,
+            "elapsed_seconds": 0.009,
+            "media_type": "movie",
+            "records": 210
+          },
+          {
+            "cache_bytes": 2072,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 5
+          }
+        ],
+        "total_records": 215
+      },
+      {
+        "cache_bytes": 120916,
+        "month": "2025-08",
+        "results": [
+          {
+            "cache_bytes": 120471,
+            "elapsed_seconds": 0.011,
+            "media_type": "movie",
+            "records": 277
+          },
+          {
+            "cache_bytes": 445,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 1
+          }
+        ],
+        "total_records": 278
+      },
+      {
+        "cache_bytes": 176896,
+        "month": "2025-09",
+        "results": [
+          {
+            "cache_bytes": 174072,
+            "elapsed_seconds": 0.021,
+            "media_type": "movie",
+            "records": 394
+          },
+          {
+            "cache_bytes": 2824,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 6
+          }
+        ],
+        "total_records": 400
+      },
+      {
+        "cache_bytes": 140277,
+        "month": "2025-10",
+        "results": [
+          {
+            "cache_bytes": 138132,
+            "elapsed_seconds": 0.013,
+            "media_type": "movie",
+            "records": 319
+          },
+          {
+            "cache_bytes": 2145,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 5
+          }
+        ],
+        "total_records": 324
+      },
+      {
+        "cache_bytes": 115810,
+        "month": "2025-11",
+        "results": [
+          {
+            "cache_bytes": 114065,
+            "elapsed_seconds": 0.011,
+            "media_type": "movie",
+            "records": 261
+          },
+          {
+            "cache_bytes": 1745,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 4
+          }
+        ],
+        "total_records": 265
+      },
+      {
+        "cache_bytes": 83773,
+        "month": "2025-12",
+        "results": [
+          {
+            "cache_bytes": 80572,
+            "elapsed_seconds": 0.008,
+            "media_type": "movie",
+            "records": 185
+          },
+          {
+            "cache_bytes": 3201,
+            "elapsed_seconds": 0.0,
+            "media_type": "series",
+            "records": 7
+          }
+        ],
+        "total_records": 192
+      }
+    ],
+    "probe_schema": 1,
+    "query_seconds": 0.189,
+    "unique_source_records": 3486,
+    "year": 2025
+  },
+  "status": "success",
+  "verification_exit_code": 0
 }
