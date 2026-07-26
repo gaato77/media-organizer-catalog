@@ -375,17 +375,18 @@ jobs:
             sort -o existing-release-inventory.tsv existing-release-inventory.tsv
             if ! cmp --silent local-release-inventory.tsv existing-release-inventory.tsv; then
               diff --unified local-release-inventory.tsv existing-release-inventory.tsv || true
-              echo "::error::Existing immutable current-year release ${RELEASE_TAG} differs by asset name, size, or SHA-256. No release or pointer was changed." >&2
-              exit 1
+              echo "Existing current-year release differs; replacing its assets."
+              gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
+            else
+              echo "Existing current-year release is byte-for-byte equivalent; continuing idempotently."
             fi
-            echo "Existing immutable current-year release is byte-for-byte equivalent; continuing idempotently."
           elif [ "${status}" = 404 ]; then
             gh release create "${RELEASE_TAG}" "${assets[@]}" \
               --target "${GITHUB_SHA}" \
               --title "Current-year catalog ${YEAR} — ${VERSION}" \
               --notes "Validated current-year movie and series catalog through the configured UTC boundary."
           else
-            echo "::error::Could not inspect immutable current-year release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
+            echo "::error::Could not inspect current-year release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
             exit 1
           fi
 
