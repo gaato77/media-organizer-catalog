@@ -3,6 +3,10 @@ name: Recover 1950-2015 catalog from completed shards
 on:
   workflow_dispatch:
     inputs:
+      version:
+        description: "Release version in YYYY.MM.DD format"
+        required: true
+        type: string
       publish:
         description: "Publish the immutable base release and update the stable channel"
         required: true
@@ -38,6 +42,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SOURCE_RUN_ID: ${{ inputs.source_run_id || '30157271026' }}
+          VERSION: ${{ inputs.version || '2026.07.25' }}
         run: |
           set -euo pipefail
           if [[ ! "${SOURCE_RUN_ID}" =~ ^[0-9]+$ ]]; then
@@ -60,9 +65,15 @@ jobs:
           import os
           import re
           from collections import Counter
+          from datetime import datetime
           from pathlib import Path
 
           run_id = os.environ["SOURCE_RUN_ID"]
+          version = os.environ["VERSION"]
+          try:
+              datetime.strptime(version, "%Y.%m.%d")
+          except ValueError as error:
+              raise SystemExit(f"::error::Version must match YYYY.MM.DD: {error}") from error
           run = json.loads(Path("source-run.json").read_text(encoding="utf-8"))
           if run.get("status") != "completed" or run.get("conclusion") != "success":
               raise SystemExit(
@@ -161,6 +172,8 @@ jobs:
         if: steps.consolidate.outcome == 'success'
         continue-on-error: true
         shell: bash
+        env:
+          VERSION: ${{ inputs.version || '2026.07.25' }}
         run: |
           set -euo pipefail
           rm -rf multi-year-release multi-year-release-work
@@ -169,21 +182,25 @@ jobs:
           import json
           import shutil
           from datetime import UTC, datetime
+          import os
           from pathlib import Path
 
           from media_catalog_builder.config import CatalogConfig
           from media_catalog_builder.probe_release import build_probe_release
 
           config = CatalogConfig.load(Path("builder/config/catalog.toml"))
+          version = os.environ["VERSION"]
+          published_at = datetime.strptime(version, "%Y.%m.%d").replace(tzinfo=UTC)
           release_summary = build_probe_release(
               Path("multi-year-probe-output"),
               Path("multi-year-release-work"),
               Path("multi-year-release"),
               config=config,
               schema_path=Path("schema/catalog-schema-v1.sql"),
-              version="2026.07.25",
-              published_at=datetime(2026, 7, 25, 17, 30, tzinfo=UTC),
+              version=version,
+              published_at=published_at,
               minimum_app_version="0.1.0",
+              required_year_range=(1950, 2015),
           )
           source_summary = json.loads(
               Path("multi-year-probe-output/summary.json").read_text(encoding="utf-8")
@@ -306,7 +323,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: base-1950-2015-2026.07.25
+          RELEASE_TAG: base-1950-2015-${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           assets=(
@@ -358,7 +376,7 @@ jobs:
           elif [ "${status}" = 404 ]; then
             gh release create "${RELEASE_TAG}" "${assets[@]}" \
               --target "${GITHUB_SHA}" \
-              --title "Base catalog 1950-2015 — 2026.07.25" \
+              --title "Base catalog 1950-2015 — ${VERSION}" \
               --notes "Validated immutable base movie and series catalog for years 1950 through 2015."
           else
             echo "::error::Could not inspect immutable release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
@@ -371,7 +389,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
-          RELEASE_TAG: base-1950-2015-2026.07.25
+          RELEASE_TAG: base-1950-2015-${{ inputs.version }}
         run: |
           set -euo pipefail
           public_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
@@ -443,7 +461,8 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: base-1950-2015-2026.07.25
+          RELEASE_TAG: base-1950-2015-${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -479,9 +498,17 @@ jobs:
             echo "::error::No component pointers exist; refusing to create an empty stable channel." >&2
             exit 1
           fi
+          published_at="$(python - <<'PY'
+          import os
+          from datetime import UTC, datetime
+
+          version = os.environ["VERSION"]
+          print(datetime.strptime(version, "%Y.%m.%d").replace(tzinfo=UTC).isoformat().replace("+00:00", "Z"))
+          PY
+          )"
           python builder/scripts/assemble_stable_channel.py \
             "${component_arguments[@]}" \
-            --published-at "2026-07-25T17:30:00Z" \
+            --published-at "${published_at}" \
             --output catalog/channel/stable.json
 
           git add catalog/components/base.json catalog/channel/stable.json

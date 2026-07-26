@@ -16,7 +16,8 @@ def test_1950_2015_recovery_reuses_existing_artifacts_and_keeps_diagnostics() ->
     assert "pattern: year-*" in workflow
     assert "probe_wikidata_year.py" not in workflow
     assert "consolidate_year_shards.py" in workflow
-    assert 'version="2026.07.25"' in workflow
+    assert "required_year_range=(1950, 2015)" in workflow
+    assert "version=version" in workflow
     assert "2026.07.25-recovered" not in workflow
     assert "if: always()" in workflow
     assert "for directory in" in workflow
@@ -24,3 +25,16 @@ def test_1950_2015_recovery_reuses_existing_artifacts_and_keeps_diagnostics() ->
     assert "if: always() && steps.package.outcome != 'success'" in workflow
     assert "recovery-diagnostics-1950-2015" in workflow
     assert "complete-1950-2015-catalog-recovered" in workflow
+
+
+def test_1950_2015_recovery_validates_and_propagates_immutable_release_version() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "recover-1950-2015.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'version:\n        description: "Release version in YYYY.MM.DD format"' in workflow
+    assert "VERSION: ${{ inputs.version || '2026.07.25' }}" in workflow
+    assert 'datetime.strptime(version, "%Y.%m.%d")' in workflow
+    assert "RELEASE_TAG: base-1950-2015-${{ inputs.version }}" in workflow
+    assert '--title "Base catalog 1950-2015 — ${VERSION}"' in workflow
+    assert '--published-at "${published_at}"' in workflow
