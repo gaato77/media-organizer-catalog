@@ -26,6 +26,8 @@ def test_current_year_workflow_is_incremental_validated_and_publish_safe() -> No
     assert "gh release download" in workflow
     assert "gh release upload" not in workflow
     assert "--clobber" not in workflow
+    assert "github.run_id" in workflow
+    assert "github.run_attempt" in workflow
     assert "write_latest_atomic" in workflow
     assert "steps.publish_release.outcome == 'success'" in workflow
     assert "contents: write" in workflow
