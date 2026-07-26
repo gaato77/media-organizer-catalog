@@ -123,6 +123,25 @@ def test_checkout_does_not_persist_write_credentials_and_push_auth_is_deferred()
     )
 
 
+def test_dry_run_build_job_is_read_only_and_write_permission_is_publish_gated() -> None:
+    workflow = _workflow(RECOVERY_WORKFLOW)
+
+    recover = workflow[workflow.index("  recover:") : workflow.index("\n  publish:")]
+    publish = workflow[workflow.index("\n  publish:") :]
+
+    assert "permissions:\n      actions: read\n      contents: read" in recover
+    assert "contents: write" not in recover
+    assert "needs: recover" in publish
+    assert "if: inputs.publish == true" in publish
+    assert "permissions:\n      actions: read\n      contents: write" in publish
+    assert "Publish immutable base release" not in recover
+    assert "Publish immutable base release" in publish
+    assert "complete-1950-2015-catalog-recovered" in recover
+    assert "complete-1950-2015-catalog-recovered" in publish
+    assert workflow.count("- uses: actions/checkout@v4") == 2
+    assert workflow.count("persist-credentials: false") == 2
+
+
 def test_publication_diagnostics_are_uploaded_after_all_publication_stages() -> None:
     workflow = _workflow(RECOVERY_WORKFLOW)
 
@@ -152,18 +171,15 @@ def test_publication_diagnostics_are_uploaded_after_all_publication_stages() -> 
 def test_base_recovery_final_gate_covers_every_requested_stage() -> None:
     workflow = _workflow(RECOVERY_WORKFLOW)
 
-    final_gate = workflow[workflow.index("Fail after preserving diagnostics") :]
-    for stage in (
-        "preflight",
-        "download",
-        "assemble",
-        "consolidate",
-        "package",
-        "publish_release",
-        "verify_release",
-        "update_pointers",
-    ):
-        assert f"steps.{stage}.outcome" in final_gate
+    build_gate = workflow[
+        workflow.index("Fail after preserving build diagnostics") : workflow.index("\n  publish:")
+    ]
+    for stage in ("preflight", "download", "assemble", "consolidate", "package"):
+        assert f"steps.{stage}.outcome" in build_gate
+
+    publication_gate = workflow[workflow.index("Fail after preserving diagnostics") :]
+    for stage in ("publish_release", "verify_release", "update_pointers"):
+        assert f"steps.{stage}.outcome" in publication_gate
 
 
 def test_ci_runs_checksum_pinned_official_actionlint_for_every_workflow() -> None:
