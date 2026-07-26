@@ -251,6 +251,7 @@ def test_supplement_build_waits_for_all_shards_and_validates_exact_range() -> No
     assert "--start-year 2016" in build
     assert "--end-year 2025" in build
     assert "build_probe_release" in build
+    assert "required_year_range=(2016, 2025)" in build
     assert "mode=ro" in build
     assert "PRAGMA integrity_check" in build
     assert "MIN(release_year), MAX(release_year), COUNT(DISTINCT release_year)" in build

@@ -146,16 +146,27 @@ def _write_lookup_cases(catalog_path: Path, path: Path) -> None:
     _write_json_atomic(path, cases)
 
 
-def _filter_required_year(
-    records: Sequence[SourceRecord], required_year: int | None
+def _filter_required_years(
+    records: Sequence[SourceRecord],
+    required_year: int | None,
+    required_year_range: tuple[int, int] | None,
 ) -> tuple[list[SourceRecord], dict[str, int]]:
-    if required_year is None:
+    if required_year is not None and required_year_range is not None:
+        raise ValueError("required_year and required_year_range are mutually exclusive")
+    if required_year_range is not None and required_year_range[0] > required_year_range[1]:
+        raise ValueError("required year range start must not be after end")
+    if required_year is None and required_year_range is None:
         return list(records), {}
 
     included: list[SourceRecord] = []
     excluded_by_year: dict[str, int] = {}
     for record in records:
-        if record.year == required_year:
+        if required_year is not None:
+            matches = record.year == required_year
+        else:
+            assert required_year_range is not None
+            matches = required_year_range[0] <= record.year <= required_year_range[1]
+        if matches:
             included.append(record)
         else:
             year = str(record.year)
@@ -174,12 +185,15 @@ def build_probe_release(
     published_at: datetime,
     minimum_app_version: str,
     required_year: int | None = None,
+    required_year_range: tuple[int, int] | None = None,
 ) -> dict[str, object]:
     source_records = [
         *_load_cached_records(probe_dir / "movie.json", MediaType.MOVIE),
         *_load_cached_records(probe_dir / "series.json", MediaType.SERIES),
     ]
-    records, excluded_other_years = _filter_required_year(source_records, required_year)
+    records, excluded_other_years = _filter_required_years(
+        source_records, required_year, required_year_range
+    )
     work_dir.mkdir(parents=True, exist_ok=True)
     catalog_path = work_dir / "catalog.sqlite"
     lookup_cases_path = work_dir / "lookup-cases.json"
