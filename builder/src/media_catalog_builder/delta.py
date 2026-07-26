@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
+from media_catalog_builder.database import sqlite_readonly_uri
+
 _DELTA_SCHEMA = Path(__file__).resolve().parents[3] / "schema" / "delta-schema-v1.sql"
 _REQUIRED_DELTA_META = frozenset(
     {
@@ -36,7 +38,7 @@ class DeltaStats:
 class _Connection:
     def __init__(self, path: Path, *, readonly: bool = False) -> None:
         if readonly:
-            self.connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+            self.connection = sqlite3.connect(sqlite_readonly_uri(path), uri=True)
         else:
             self.connection = sqlite3.connect(path)
         self.connection.row_factory = sqlite3.Row

@@ -309,7 +309,7 @@ def _verify_sqlite(component: CatalogComponent, installed: Path) -> None:
         assert database.get_meta("catalog_schema") == str(component.catalog_schema)
         assert database.get_meta("catalog_version") == component.version
 
-    uri = f"file:{installed.as_posix()}?mode=ro"
+    uri = f"{installed.resolve().as_uri()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
         outside_range = connection.execute(
             "SELECT COUNT(*) FROM works WHERE release_year < ? OR release_year > ?",
@@ -322,8 +322,22 @@ def _verify_sqlite(component: CatalogComponent, installed: Path) -> None:
             "ORDER BY w.release_year, w.qid, n.name_rank LIMIT 1",
             (component.from_year, component.to_year),
         ).fetchone()
+        lookup_plan = ()
+        if representative is not None:
+            lookup_plan = connection.execute(
+                "EXPLAIN QUERY PLAN "
+                "SELECT w.qid FROM names AS n JOIN works AS w ON w.qid = n.work_qid "
+                "WHERE n.normalized_name = ? AND w.release_year = ? "
+                "ORDER BY w.release_year, w.media_type, w.qid",
+                (representative[0], representative[2]),
+            ).fetchall()
     assert outside_range == (0,)
     assert representative is not None
+    if not any(
+        "SEARCH n USING" in str(row[3]) and "normalized_name=?" in str(row[3])
+        for row in lookup_plan
+    ):
+        raise ValueError("representative lookup did not use the catalog name index")
     normalized_name, qid, year = representative
     with CatalogDatabase.open(installed, readonly=True) as database:
         matches = database.lookup(str(normalized_name), year=int(year))
@@ -425,6 +439,51 @@ def test_default_distribution_verification_is_offline_and_does_not_materialize_a
 
     assert _verify_distribution_if_configured(tmp_path) == _load_committed_distribution()
     assert _committed_distribution_state() == before
+
+
+def test_sqlite_verification_rejects_an_unindexed_representative_lookup(tmp_path: Path) -> None:
+    installed = tmp_path / "catalog.sqlite"
+    with sqlite3.connect(installed) as connection:
+        connection.executescript(
+            """
+            CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL) WITHOUT ROWID;
+            CREATE TABLE works (
+                qid INTEGER PRIMARY KEY,
+                media_type INTEGER NOT NULL,
+                release_year INTEGER NOT NULL,
+                canonical_title TEXT NOT NULL
+            );
+            CREATE TABLE names (
+                normalized_name TEXT NOT NULL,
+                work_qid INTEGER NOT NULL,
+                name_rank INTEGER NOT NULL
+            );
+            INSERT INTO meta VALUES ('catalog_schema', '1'), ('catalog_version', '2026.07.26');
+            INSERT INTO works VALUES (1, 1, 2020, 'Example');
+            INSERT INTO names VALUES ('example', 1, 0);
+            """
+        )
+    component = CatalogComponent(
+        id="base-test",
+        type=ComponentType.BASE,
+        from_year=2020,
+        to_year=2020,
+        version="2026.07.26",
+        release_tag="base-test-2026.07.26",
+        manifest_asset="manifest.json",
+        package_name="catalog.zip",
+        package_bytes=1,
+        package_sha256="0" * 64,
+        installed_name="catalog.sqlite",
+        installed_bytes=installed.stat().st_size,
+        installed_sha256=sha256_file(installed),
+        catalog_schema=1,
+        minimum_app_version="1.0.0",
+        priority=100,
+    )
+
+    with pytest.raises(ValueError, match="name index"):
+        _verify_sqlite(component, installed)
 
 
 @pytest.mark.skipif(

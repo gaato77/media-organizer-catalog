@@ -9,6 +9,10 @@ from media_catalog_builder.model import CatalogRecord, MediaType
 from media_catalog_builder.normalize import normalize_lookup
 
 
+def sqlite_readonly_uri(path: Path) -> str:
+    return f"{path.resolve().as_uri()}?mode=ro"
+
+
 class CatalogDatabase:
     def __init__(
         self,
@@ -41,7 +45,7 @@ class CatalogDatabase:
     @classmethod
     def open(cls, path: Path, *, readonly: bool = False) -> CatalogDatabase:
         if readonly:
-            connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+            connection = sqlite3.connect(sqlite_readonly_uri(path), uri=True)
         else:
             connection = sqlite3.connect(path)
             connection.execute("PRAGMA foreign_keys = ON")
