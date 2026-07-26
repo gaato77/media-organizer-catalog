@@ -61,7 +61,7 @@ def test_base_recovery_preflights_every_required_source_artifact_before_download
 def test_base_release_is_immutable_idempotent_and_publicly_verified() -> None:
     workflow = _workflow(RECOVERY_WORKFLOW)
 
-    assert "base-1950-2015-2026.07.25" in workflow
+    assert "RELEASE_TAG: base-1950-2015-${{ inputs.version }}" in workflow
     assert "gh release create" in workflow
     assert "gh release download" in workflow
     assert "sha256sum" in workflow
