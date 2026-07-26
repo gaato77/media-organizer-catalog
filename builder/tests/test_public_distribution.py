@@ -1,12 +1,13 @@
 from __future__ import annotations
 
+import io
 import os
 import sqlite3
 import stat
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import pytest
 import requests
@@ -29,6 +30,8 @@ _MAX_CHANNEL_BYTES = 2 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _MAX_PACKAGE_BYTES = 100 * 1024 * 1024
 _MAX_INSTALLED_BYTES = 250 * 1024 * 1024
+_MAX_REDIRECTS = 5
+_REDIRECT_STATUS_CODES = frozenset({301, 302, 303, 307, 308})
 
 
 class _UnauthenticatedSession(requests.Session):
@@ -49,7 +52,26 @@ def _response(url: str) -> requests.Response:
     response = requests.Response()
     response.url = url
     response.request = requests.Request("GET", url).prepare()
+    response.raw = io.BytesIO()
+    _ = response.content
     return response
+
+
+class _RedirectRecordingSession(requests.Session):
+    def __init__(self) -> None:
+        super().__init__()
+        self.requested: list[str] = []
+
+    def get(self, url: str, **kwargs: object) -> requests.Response:
+        self.requested.append(url)
+        unsafe_target = "http://127.0.0.1/private"
+        if kwargs.get("allow_redirects", True):
+            self.requested.append(unsafe_target)
+            raise AssertionError("automatic redirect reached an unsafe target")
+        response = _response(url)
+        response.status_code = 302
+        response.headers["Location"] = unsafe_target
+        return response
 
 
 def _committed_distribution_state() -> dict[Path, bytes]:
@@ -109,10 +131,24 @@ def test_distribution_transport_rejects_an_insecure_redirect_hop() -> None:
         _assert_unauthenticated_https(final_response)
 
 
+def test_download_rejects_an_unsafe_redirect_before_requesting_it(tmp_path: Path) -> None:
+    session = _RedirectRecordingSession()
+    initial_url = "https://github.com/gaato77/media-organizer-catalog/releases/download/tag/file"
+
+    with pytest.raises(ValueError, match="allowed HTTPS"):
+        _download(session, initial_url, tmp_path / "file", maximum_bytes=10)
+
+    assert session.requested == [initial_url]
+
+
 def _assert_unauthenticated_https(response: requests.Response) -> None:
     for hop in (*response.history, response):
-        if urlsplit(hop.url).scheme != "https":
-            raise ValueError("distribution download redirected away from HTTPS")
+        try:
+            _validate_download_target(hop.url)
+        except ValueError as exc:
+            raise ValueError(
+                "distribution download redirected away from HTTPS or to an unsafe target"
+            ) from exc
         if "Authorization" in hop.request.headers:
             raise ValueError("distribution download unexpectedly used authentication")
 
@@ -121,6 +157,58 @@ def _release_url(component: CatalogComponent, asset_name: str) -> str:
     tag = quote(component.release_tag, safe="")
     asset = quote(asset_name, safe="")
     return f"{_RELEASE_ROOT}/{tag}/{asset}"
+
+
+def _validate_download_target(url: str) -> str:
+    if url != url.strip() or any(ord(character) < 32 for character in url):
+        raise ValueError("distribution target must be an allowed HTTPS URL")
+    try:
+        parsed = urlsplit(url)
+        port = parsed.port
+    except ValueError as exc:
+        raise ValueError("distribution target must be an allowed HTTPS URL") from exc
+    hostname = parsed.hostname
+    github_host = hostname in {"github.com", "raw.githubusercontent.com"}
+    github_content_host = hostname is not None and hostname.endswith(".githubusercontent.com")
+    if (
+        parsed.scheme != "https"
+        or not parsed.netloc
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in {None, 443}
+        or not (github_host or github_content_host)
+    ):
+        raise ValueError("distribution target must be an allowed HTTPS URL")
+    return url
+
+
+def _get_with_safe_redirects(session: requests.Session, url: str) -> requests.Response:
+    current_url = _validate_download_target(url)
+    for redirect_count in range(_MAX_REDIRECTS + 1):
+        response = session.get(
+            current_url,
+            allow_redirects=False,
+            stream=True,
+            timeout=(10, 120),
+        )
+        _assert_unauthenticated_https(response)
+        if response.status_code not in _REDIRECT_STATUS_CODES:
+            return response
+        location = response.headers.get("Location")
+        if location is None:
+            response.close()
+            raise ValueError("distribution redirect did not declare a target")
+        next_url = urljoin(response.url, location)
+        try:
+            _validate_download_target(next_url)
+        except ValueError:
+            response.close()
+            raise
+        response.close()
+        if redirect_count == _MAX_REDIRECTS:
+            raise ValueError("distribution download exceeded the redirect limit")
+        current_url = next_url
+    raise AssertionError("unreachable redirect loop")
 
 
 def _download(
@@ -132,9 +220,8 @@ def _download(
     expected_bytes: int | None = None,
 ) -> None:
     destination.parent.mkdir(parents=True, exist_ok=True)
-    with session.get(url, stream=True, timeout=(10, 120)) as response:
+    with _get_with_safe_redirects(session, url) as response:
         response.raise_for_status()
-        _assert_unauthenticated_https(response)
         content_length = response.headers.get("Content-Length")
         if content_length is not None:
             declared_bytes = int(content_length)
