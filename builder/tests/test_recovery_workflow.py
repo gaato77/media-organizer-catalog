@@ -1,4 +1,9 @@
+import os
+import subprocess
+import sys
 from pathlib import Path
+
+import pytest
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -38,3 +43,26 @@ def test_1950_2015_recovery_validates_and_propagates_immutable_release_version()
     assert "RELEASE_TAG: base-1950-2015-${{ inputs.version }}" in workflow
     assert '--title "Base catalog 1950-2015 — ${VERSION}"' in workflow
     assert '--published-at "${published_at}"' in workflow
+
+
+@pytest.mark.parametrize("version", ["2026.7.26", "2026.07.2"])
+def test_1950_2015_recovery_rejects_noncanonical_release_versions(version: str) -> None:
+    workflow = (ROOT / ".github" / "workflows" / "recover-1950-2015.yml").read_text(
+        encoding="utf-8"
+    )
+    preflight_python = workflow.split("python - <<'PY'", maxsplit=1)[1].split(
+        "\n          PY", maxsplit=1
+    )[0]
+    code = "\n".join(line.removeprefix("          ") for line in preflight_python.splitlines())
+    env = os.environ | {"VERSION": version, "SOURCE_RUN_ID": "30200783910"}
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        check=False,
+        env=env,
+        text=True,
+    )
+
+    assert result.returncode != 0
+    assert "Version must match YYYY.MM.DD" in result.stderr
