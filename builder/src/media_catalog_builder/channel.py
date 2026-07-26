@@ -16,6 +16,7 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
     | {f"COM{number}" for number in range(1, 10)}
     | {f"LPT{number}" for number in range(1, 10)}
+    | {f"{prefix}{suffix}" for prefix in ("COM", "LPT") for suffix in "¹²³"}
 )
 _COMPONENT_FIELDS = frozenset(
     {
@@ -57,9 +58,9 @@ def _validate_fields(payload: JsonObject, expected: frozenset[str], label: str) 
 
 
 def _positive_int(value: object, label: str) -> int:
-    if type(value) is not int or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"{label} must be a positive integer")
-    return cast(int, value)
+    return value
 
 
 def _safe_reference(value: object, label: str) -> str:
