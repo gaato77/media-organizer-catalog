@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_SAFE_REFERENCE = re.compile(r"^[^/\\\x00]+$")
+_SAFE_REFERENCE = re.compile(r'^[^<>:"/\\|?*\x00-\x1f]+$')
 _COMPONENT_FIELDS = frozenset(
     {
         "id",
