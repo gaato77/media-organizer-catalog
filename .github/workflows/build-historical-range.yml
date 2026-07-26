@@ -217,6 +217,7 @@ jobs:
               version=version,
               published_at=published_at,
               minimum_app_version="0.1.0",
+              required_year_range=(2016, 2025),
           )
           source_summary = json.loads(
               Path("multi-year-probe-output/summary.json").read_text(encoding="utf-8")

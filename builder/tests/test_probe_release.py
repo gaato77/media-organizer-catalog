@@ -159,3 +159,44 @@ def test_probe_release_filters_records_outside_required_year(tmp_path: Path) -> 
             "SELECT DISTINCT release_year FROM works ORDER BY release_year"
         ).fetchall()
     assert years == [(2026,)]
+
+
+def test_probe_release_filters_records_outside_required_year_range(tmp_path: Path) -> None:
+    probe_dir = tmp_path / "probe"
+    probe_dir.mkdir()
+    (probe_dir / "movie.json").write_text(
+        json.dumps(
+            _payload(
+                _binding(10, "1917-01-10T00:00:00Z", "Old Movie"),
+                _binding(11, "2016-01-01T00:00:00Z", "First Supplement Movie"),
+                _binding(12, "2025-12-31T00:00:00Z", "Last Supplement Movie"),
+            )
+        ),
+        encoding="utf-8",
+    )
+    (probe_dir / "series.json").write_text(
+        json.dumps(_payload(_binding(20, "2026-02-01T00:00:00Z", "Future Series"))),
+        encoding="utf-8",
+    )
+    config = CatalogConfig.load(ROOT / "builder" / "config" / "catalog.toml")
+    work_dir = tmp_path / "work"
+
+    summary = build_probe_release(
+        probe_dir,
+        work_dir,
+        tmp_path / "release",
+        config=config,
+        schema_path=ROOT / "schema" / "catalog-schema-v1.sql",
+        version="2026.07.26",
+        published_at=datetime(2026, 7, 26, 17, 30, tzinfo=UTC),
+        minimum_app_version="0.1.0",
+        required_year_range=(2016, 2025),
+    )
+
+    assert summary["source_records"] == 4
+    assert summary["excluded_other_year_records"] == 2
+    with sqlite3.connect(work_dir / "catalog.sqlite") as connection:
+        years = connection.execute(
+            "SELECT DISTINCT release_year FROM works ORDER BY release_year"
+        ).fetchall()
+    assert years == [(2016,), (2025,)]
