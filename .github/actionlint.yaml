@@ -1,0 +1,12 @@
+# GitHub Actions supports concurrency.queue, but actionlint 1.7.12 predates it.
+# Keep this exception path- and message-specific until actionlint releases support.
+paths:
+  .github/workflows/build-historical-range.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
+  .github/workflows/current-year-catalog.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'
+  .github/workflows/recover-1950-2015.yml:
+    ignore:
+      - '^unexpected key "queue" for "concurrency" section\. expected one of "cancel-in-progress", "group"$'

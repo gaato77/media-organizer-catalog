@@ -543,7 +543,17 @@ def test_ci_runs_checksum_pinned_official_actionlint_for_every_workflow() -> Non
     assert "latest" not in workflow[workflow.index("Install actionlint") :]
 
 
-def test_every_publication_job_uses_the_shared_non_cancelling_lock() -> None:
+def test_ci_actions_are_pinned_to_reviewed_commits() -> None:
+    workflow = _workflow(CI_WORKFLOW)
+    actions = re.findall(r"^\s+(?:- )?uses: ([^@\s]+)@([^\s]+)", workflow, flags=re.MULTILINE)
+
+    assert actions == [
+        ("actions/checkout", REVIEWED_ACTIONS["actions/checkout"]),
+        ("actions/setup-python", REVIEWED_ACTIONS["actions/setup-python"]),
+    ]
+
+
+def test_every_publication_job_uses_the_shared_fifo_non_cancelling_lock() -> None:
     for path in PUBLICATION_WORKFLOWS:
         workflow = _workflow(path)
         workflow_header = workflow[: workflow.index("jobs:")]
@@ -552,7 +562,24 @@ def test_every_publication_job_uses_the_shared_non_cancelling_lock() -> None:
 
         assert "stable-catalog-publication" not in workflow_header, path.name
         assert "concurrency:\n      group: stable-catalog-publication" in publish_header, path.name
+        assert "queue: max" in publish_header, path.name
         assert "cancel-in-progress: false" in publish_header, path.name
+
+
+def test_every_public_asset_download_restricts_and_bounds_redirects_and_size() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        verification_start = workflow.index("Public release verification")
+        pointer_start = workflow.index("Update ", verification_start)
+        verification = workflow[verification_start:pointer_start]
+        download_start = verification.index("curl --fail")
+        download_end = verification.index("actual_size=", download_start)
+        download = verification[download_start:download_end]
+
+        assert "--proto '=https'" in download, path.name
+        assert "--proto-redir '=https'" in download, path.name
+        assert "--max-redirs 5" in download, path.name
+        assert '--max-filesize "${declared_size}"' in download, path.name
 
 
 def test_every_publication_job_is_default_branch_gated_and_least_privileged() -> None:

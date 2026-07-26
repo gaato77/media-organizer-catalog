@@ -342,6 +342,7 @@ jobs:
       contents: write
     concurrency:
       group: stable-catalog-publication
+      queue: max
       cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -481,6 +482,8 @@ jobs:
               exit 1
             fi
             curl --fail --silent --show-error --location --retry 3 \
+              --proto '=https' --proto-redir '=https' --max-redirs 5 \
+              --max-filesize "${declared_size}" \
               --output "public-release-assets/${name}" "${url}"
             actual_size="$(stat -c '%s' "public-release-assets/${name}")"
             if [ "${actual_size}" != "${declared_size}" ]; then
