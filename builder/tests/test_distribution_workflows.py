@@ -432,20 +432,19 @@ def test_current_year_publication_lock_is_scoped_and_actions_are_pinned() -> Non
     ]
 
 
-def test_current_year_release_replacement_is_verified_from_public_bytes() -> None:
+def test_current_year_release_is_immutable_idempotent_and_verified_from_public_bytes() -> None:
     workflow = _workflow(CURRENT_YEAR_WORKFLOW)
 
-    assert "gh release upload" in workflow
-    assert "--clobber" in workflow
+    assert "gh release create" in workflow
+    assert "gh release download" in workflow
+    assert "existing-release-inventory.tsv" in workflow
+    assert "local-release-inventory.tsv" in workflow
+    assert "sha256sum" in workflow
+    assert "--clobber" not in workflow
+    assert "gh release upload" not in workflow
+    assert "Existing immutable current-year release" in workflow
+    assert "No release or pointer was changed" in workflow
     assert "Public release verification" in workflow
-    assert (
-        "gh release download"
-        not in workflow[
-            workflow.index("Public release verification") : workflow.index(
-                "Update current-year pointers and stable channel"
-            )
-        ]
-    )
     assert "public-release-inventory.tsv" in workflow
     verification = workflow[
         workflow.index("Public release verification") : workflow.index(
