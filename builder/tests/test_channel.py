@@ -83,8 +83,11 @@ def test_component_round_trip_uses_exact_contract_fields(tmp_path: Path) -> None
         ({"installed_sha256": "f" * 63}, "SHA-256"),
         ({"package_name": "../catalog.zip"}, "safe"),
         ({"package_name": "catalog:bad.zip"}, "safe"),
+        ({"package_name": "AUX.sqlite"}, "safe"),
+        ({"package_name": "catalog.zip."}, "safe"),
         ({"release_tag": "release/tag"}, "safe"),
         ({"release_tag": "release?bad"}, "safe"),
+        ({"release_tag": "release "}, "safe"),
         ({"manifest_asset": "manifest\n.json"}, "safe"),
         ({"from_year": 1799}, "year"),
         ({"from_year": 2020, "to_year": 2019}, "year"),
@@ -176,6 +179,12 @@ def test_atomic_writes_remove_temporary_file_when_replace_fails(
 ) -> None:
     component_path = tmp_path / "component.json"
     channel_path = tmp_path / "stable.json"
+    component_path.write_text("existing component", encoding="utf-8")
+    channel_path.write_text("existing channel", encoding="utf-8")
+    component_stale_temp = tmp_path / "component.json.tmp"
+    channel_stale_temp = tmp_path / "stable.json.tmp"
+    component_stale_temp.write_text("other writer", encoding="utf-8")
+    channel_stale_temp.write_text("other writer", encoding="utf-8")
 
     def fail_replace(source: Path, destination: Path) -> None:
         raise OSError("replace failed")
@@ -190,5 +199,9 @@ def test_atomic_writes_remove_temporary_file_when_replace_fails(
             StableChannel(1, "stable", datetime.now(UTC), (_component(),)),
         )
 
-    assert not (tmp_path / "component.json.tmp").exists()
-    assert not (tmp_path / "stable.json.tmp").exists()
+    assert component_path.read_text(encoding="utf-8") == "existing component"
+    assert channel_path.read_text(encoding="utf-8") == "existing channel"
+    assert component_stale_temp.read_text(encoding="utf-8") == "other writer"
+    assert channel_stale_temp.read_text(encoding="utf-8") == "other writer"
+    assert list(tmp_path.glob("component.json.*.tmp")) == []
+    assert list(tmp_path.glob("stable.json.*.tmp")) == []

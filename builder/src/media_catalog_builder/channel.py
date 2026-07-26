@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -11,6 +12,11 @@ from typing import Any, cast
 
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _SAFE_REFERENCE = re.compile(r'^[^<>:"/\\|?*\x00-\x1f]+$')
+_WINDOWS_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{number}" for number in range(1, 10)}
+    | {f"LPT{number}" for number in range(1, 10)}
+)
 _COMPONENT_FIELDS = frozenset(
     {
         "id",
@@ -57,11 +63,14 @@ def _positive_int(value: object, label: str) -> int:
 
 
 def _safe_reference(value: object, label: str) -> str:
+    stem = value.split(".", 1)[0].rstrip(" ").upper() if isinstance(value, str) else ""
     if (
         not isinstance(value, str)
         or not value.strip()
         or value in {".", ".."}
+        or value.endswith((".", " "))
         or _SAFE_REFERENCE.fullmatch(value) is None
+        or stem in _WINDOWS_RESERVED_NAMES
     ):
         raise ValueError(f"{label} must be a safe non-empty reference")
     return value
@@ -248,19 +257,30 @@ def _validate_component_overlaps(components: tuple[CatalogComponent, ...]) -> No
 
 def _write_atomic(path: Path, payload: JsonObject) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(f"{path.name}.tmp")
+    temporary: Path | None = None
     try:
-        temporary.unlink(missing_ok=True)
-        with temporary.open("w", encoding="utf-8", newline="\n") as handle:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=path.parent,
+            prefix=f"{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            temporary = Path(handle.name)
             serialized = json.dumps(
                 payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
             )
             handle.write(serialized + "\n")
             handle.flush()
             os.fsync(handle.fileno())
+        if temporary is None:
+            raise RuntimeError("temporary file was not created")
         os.replace(temporary, path)
     except Exception:
-        temporary.unlink(missing_ok=True)
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
         raise
 
 
