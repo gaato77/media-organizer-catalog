@@ -101,3 +101,18 @@ def test_finalize_returns_ok_integrity(tmp_path: Path, schema_path: Path) -> Non
     with CatalogDatabase.create(tmp_path / "catalog.sqlite", schema_path) as database:
         database.upsert(_record(1, 2000, "Example", ("example",)))
         assert database.finalize() == "ok"
+
+
+def test_readonly_open_uses_exact_path_when_filename_contains_hash(
+    tmp_path: Path,
+    schema_path: Path,
+) -> None:
+    prefix = tmp_path / "catalog"
+    target = tmp_path / "catalog#readonly.sqlite"
+    with CatalogDatabase.create(prefix, schema_path) as database:
+        database.set_meta("catalog_version", "wrong-prefix")
+    with CatalogDatabase.create(target, schema_path) as database:
+        database.set_meta("catalog_version", "expected-target")
+
+    with CatalogDatabase.open(target, readonly=True) as database:
+        assert database.get_meta("catalog_version") == "expected-target"

@@ -30,23 +30,27 @@ on:
     - cron: "41 6 * * 0"
 
 permissions:
-  contents: write
-  actions: read
-
-concurrency:
-  group: current-year-catalog-production
-  cancel-in-progress: false
+  contents: read
 
 jobs:
   build:
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      publish: ${{ steps.plan.outputs.publish }}
+      published_at: ${{ steps.plan.outputs.published_at }}
+      release_tag: ${{ steps.plan.outputs.release_tag }}
+      version: ${{ steps.plan.outputs.version }}
+      year: ${{ steps.plan.outputs.year }}
     runs-on: ubuntu-latest
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
           cache: pip
@@ -140,7 +144,7 @@ jobs:
 
       - name: Restore current-year month cache
         id: year_cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: current-year-probe-output
           key: current-year-${{ steps.plan.outputs.year }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -176,7 +180,7 @@ jobs:
       - name: Save current-year month cache
         if: always()
         continue-on-error: true
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: current-year-probe-output
           key: current-year-${{ steps.plan.outputs.year }}-${{ github.run_id }}-${{ github.run_attempt }}
@@ -242,7 +246,7 @@ jobs:
       - name: Upload current-year catalog diagnostics
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: current-year-catalog-diagnostics-${{ steps.plan.outputs.year }}-${{ steps.plan.outputs.version }}
           path: |
@@ -260,7 +264,7 @@ jobs:
 
       - name: Upload validated current-year package artifact
         if: always() && steps.package.outcome == 'success'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: current-year-catalog-${{ steps.plan.outputs.year }}-${{ steps.plan.outputs.version }}
           path: |
@@ -274,15 +278,58 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Fail after preserving build diagnostics
+        if: >-
+          always() && (
+            steps.probe.outcome != 'success' ||
+            steps.package.outcome != 'success'
+          )
+        run: exit 1
+
+  publish:
+    needs: build
+    if: needs.build.outputs.publish == 'true' && github.ref_type == 'branch' && github.ref_name == github.event.repository.default_branch
+    permissions:
+      actions: read
+      contents: write
+    concurrency:
+      group: stable-catalog-publication
+      queue: max
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+
+      - name: Install builder
+        run: python -m pip install -e "builder[test]"
+
+      - name: Download validated current-year package
+        id: publication_input
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: current-year-catalog-${{ needs.build.outputs.year }}-${{ needs.build.outputs.version }}
+          path: .
+
       - name: Publish validated current-year release
         id: publish_release
-        if: always() && steps.plan.outputs.publish == 'true' && steps.package.outcome == 'success'
+        if: steps.publication_input.outcome == 'success'
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
-          YEAR: ${{ steps.plan.outputs.year }}
-          VERSION: ${{ steps.plan.outputs.version }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          YEAR: ${{ needs.build.outputs.year }}
+          VERSION: ${{ needs.build.outputs.version }}
         run: |
           set -euo pipefail
           assets=(
@@ -291,62 +338,264 @@ jobs:
             current-year-source-summary.json
             current-year-skip-audit.json
           )
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber
-          else
+          : > local-release-inventory.tsv
+          for asset in "${assets[@]}"; do
+            test -f "${asset}"
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> local-release-inventory.tsv
+          done
+          sort -o local-release-inventory.tsv local-release-inventory.tsv
+          if [ -n "$(cut -f1 local-release-inventory.tsv | uniq -d)" ]; then
+            echo "::error::Validated package contains duplicate release asset names." >&2
+            exit 1
+          fi
+
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status="$(curl --silent --show-error --output existing-release.json \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${api_url}")"
+          if [ "${status}" = 200 ]; then
+            rm -rf existing-release-assets
+            mkdir existing-release-assets
+            gh release download "${RELEASE_TAG}" --dir existing-release-assets
+            : > existing-release-inventory.tsv
+            while IFS= read -r -d '' asset; do
+              printf '%s\t%s\t%s\n' \
+                "$(basename "${asset}")" \
+                "$(stat -c '%s' "${asset}")" \
+                "$(sha256sum "${asset}" | awk '{print $1}')" \
+                >> existing-release-inventory.tsv
+            done < <(find existing-release-assets -maxdepth 1 -type f -print0)
+            sort -o existing-release-inventory.tsv existing-release-inventory.tsv
+            if ! cmp --silent local-release-inventory.tsv existing-release-inventory.tsv; then
+              diff --unified local-release-inventory.tsv existing-release-inventory.tsv || true
+              echo "::error::Existing immutable current-year release ${RELEASE_TAG} differs by asset name, size, or SHA-256. No release or pointer was changed." >&2
+              exit 1
+            fi
+            echo "Existing immutable current-year release is byte-for-byte equivalent; continuing idempotently."
+          elif [ "${status}" = 404 ]; then
             gh release create "${RELEASE_TAG}" "${assets[@]}" \
               --target "${GITHUB_SHA}" \
               --title "Current-year catalog ${YEAR} — ${VERSION}" \
               --notes "Validated current-year movie and series catalog through the configured UTC boundary."
+          else
+            echo "::error::Could not inspect immutable current-year release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
+            exit 1
           fi
 
-      - name: Update stable current catalog pointer
-        id: update_pointer
+      - name: Public release verification
+        id: verify_release
         if: always() && steps.publish_release.outcome == 'success'
+        continue-on-error: true
         shell: bash
         env:
-          RELEASE_TAG: ${{ steps.plan.outputs.release_tag }}
-          YEAR: ${{ steps.plan.outputs.year }}
-          VERSION: ${{ steps.plan.outputs.version }}
-          PUBLISHED_AT: ${{ steps.plan.outputs.published_at }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          public_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status=000
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --output public-release.json \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${public_api}")"
+            if [ "${status}" = 200 ]; then
+              break
+            fi
+            if [ "${attempt}" -lt 6 ]; then
+              sleep 5
+            fi
+          done
+          if [ "${status}" != 200 ]; then
+            echo "::error::Release ${RELEASE_TAG} is not publicly visible; unauthenticated GitHub API returned HTTP ${status}. Pointers remain unchanged." >&2
+            exit 1
+          fi
+          python - <<'PY' > public-release-assets.tsv
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path("public-release.json").read_text(encoding="utf-8"))
+          if release.get("draft") or release.get("prerelease"):
+              raise SystemExit(
+                  "::error::The current-year release must be public, non-draft, and non-prerelease."
+              )
+          for asset in release.get("assets", []):
+              print(asset["name"], asset["size"], asset["browser_download_url"], sep="\t")
+          PY
+          rm -rf public-release-assets
+          mkdir public-release-assets
+          while IFS=$'\t' read -r name declared_size url; do
+            if [[ -z "${name}" || "${name}" == "." || "${name}" == ".." || \
+              "${name}" == */* || "${name}" == *\\* ]]; then
+              echo "::error::Public release returned an unsafe asset name: ${name}" >&2
+              exit 1
+            fi
+            curl --fail --silent --show-error --location --retry 3 \
+              --proto '=https' --proto-redir '=https' --max-redirs 5 \
+              --max-filesize "${declared_size}" \
+              --output "public-release-assets/${name}" "${url}"
+            actual_size="$(stat -c '%s' "public-release-assets/${name}")"
+            if [ "${actual_size}" != "${declared_size}" ]; then
+              echo "::error::Public asset ${name} size differs from its release metadata." >&2
+              exit 1
+            fi
+          done < public-release-assets.tsv
+          : > public-release-inventory.tsv
+          while IFS= read -r -d '' asset; do
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> public-release-inventory.tsv
+          done < <(find public-release-assets -maxdepth 1 -type f -print0)
+          sort -o public-release-inventory.tsv public-release-inventory.tsv
+          if ! cmp --silent local-release-inventory.tsv public-release-inventory.tsv; then
+            diff --unified local-release-inventory.tsv public-release-inventory.tsv || true
+            echo "::error::Public release assets do not match the validated package byte-for-byte. Pointers remain unchanged." >&2
+            exit 1
+          fi
+
+      - name: Update current-year pointers and stable channel
+        id: update_pointers
+        if: always() && steps.verify_release.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ needs.build.outputs.release_tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+          YEAR: ${{ needs.build.outputs.year }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::Unrelated tracked change detected before generated catalog update." >&2
+            git status --short --untracked-files=no
+            exit 1
+          fi
           git pull --rebase origin "${GITHUB_REF_NAME}"
+
+          rm -rf public-release-work
+          mkdir public-release-work
           python - <<'PY'
-          import json
           import os
+          import shutil
+          import zipfile
           from pathlib import Path
 
           from media_catalog_builder.current_release import LatestCatalog, write_latest_atomic
+          from media_catalog_builder.manifest import load_manifest
 
-          manifest = json.loads(
-              Path("current-year-release/manifest.json").read_text(encoding="utf-8")
-          )
+          release_dir = Path("public-release-assets")
+          manifest = load_manifest(Path("public-release-assets/manifest.json"))
+          if manifest.catalog_version != os.environ["VERSION"]:
+              raise SystemExit("::error::Public manifest version differs from the workflow plan.")
+          package = release_dir / manifest.full.name
+          with zipfile.ZipFile(package) as archive:
+              members = archive.infolist()
+              if len(members) != 1 or members[0].is_dir() or members[0].filename != "catalog.sqlite":
+                  raise SystemExit("::error::Public full package has unexpected archive entries.")
+              with archive.open(members[0]) as source, Path(
+                  "public-release-work/catalog.sqlite"
+              ).open("wb") as destination:
+                  shutil.copyfileobj(source, destination)
           latest = LatestCatalog(
               year=int(os.environ["YEAR"]),
-              version=os.environ["VERSION"],
-              published_at=os.environ["PUBLISHED_AT"],
+              version=manifest.catalog_version,
+              published_at=manifest.published_at,
               release_tag=os.environ["RELEASE_TAG"],
               manifest_asset="manifest.json",
-              full_sha256=str(manifest["full"]["sha256"]),
+              full_sha256=manifest.full.sha256,
           )
           write_latest_atomic(Path("catalog/current/latest.json"), latest)
           PY
-          git add catalog/current/latest.json
+
+          mkdir -p catalog/components catalog/channel
+          python builder/scripts/write_component_pointer.py \
+            --release-dir public-release-assets \
+            --installed-database public-release-work/catalog.sqlite \
+            --component-id "current-${YEAR}" \
+            --component-type current-year \
+            --from-year "${YEAR}" \
+            --to-year "${YEAR}" \
+            --release-tag "${RELEASE_TAG}" \
+            --priority 400 \
+            --output catalog/components/current-year.json
+
+          component_arguments=()
+          shopt -s nullglob
+          for pointer in catalog/components/*.json; do
+            if [ -f "${pointer}" ]; then
+              component_arguments+=(--component "${pointer}")
+            fi
+          done
+          if [ "${#component_arguments[@]}" -eq 0 ]; then
+            echo "::error::No component pointers exist; refusing to create an empty stable channel." >&2
+            exit 1
+          fi
+          published_at="$(python - <<'PY'
+          from pathlib import Path
+
+          from media_catalog_builder.manifest import load_manifest
+
+          print(load_manifest(Path("public-release-assets/manifest.json")).published_at)
+          PY
+          )"
+          python builder/scripts/assemble_stable_channel.py \
+            "${component_arguments[@]}" \
+            --published-at "${published_at}" \
+            --output catalog/channel/stable.json
+
+          git add catalog/current/latest.json catalog/components/current-year.json catalog/channel/stable.json
+          while IFS= read -r changed; do
+            case "${changed}" in
+              catalog/current/latest.json|catalog/components/current-year.json|catalog/channel/stable.json) ;;
+              *)
+                echo "::error::Unrelated tracked change detected before generated commit: ${changed}" >&2
+                exit 1
+                ;;
+            esac
+          done < <({ git diff --name-only; git diff --cached --name-only; } | sort -u)
           if git diff --cached --quiet; then
+            echo "Generated catalog pointers are already current."
             exit 0
           fi
           git commit -m "catalog: publish current-year ${VERSION}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          gh auth setup-git
+          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "::error::Generated catalog push failed (possibly non-fast-forward); no force push was attempted. Re-run after the competing publication completes." >&2
+            exit 1
+          fi
 
-      - name: Fail after preserving diagnostics
+      - name: Upload publication diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: current-year-publication-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            existing-release.json
+            public-release.json
+            local-release-inventory.tsv
+            existing-release-inventory.tsv
+            public-release-inventory.tsv
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail after preserving publication diagnostics
         if: >-
           always() && (
-            steps.probe.outcome != 'success' ||
-            steps.package.outcome != 'success' ||
-            (steps.plan.outputs.publish == 'true' && steps.publish_release.outcome != 'success') ||
-            (steps.plan.outputs.publish == 'true' && steps.update_pointer.outcome != 'success')
+            steps.publish_release.outcome != 'success' ||
+            steps.verify_release.outcome != 'success' ||
+            steps.update_pointers.outcome != 'success'
           )
         run: exit 1

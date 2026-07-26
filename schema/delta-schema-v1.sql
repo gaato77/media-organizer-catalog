@@ -14,6 +14,13 @@ CREATE TABLE target_meta (
     value TEXT NOT NULL
 ) WITHOUT ROWID;
 
+CREATE TABLE target_stat1 (
+    row_id INTEGER PRIMARY KEY CHECK (row_id > 0),
+    table_name TEXT NOT NULL,
+    index_name TEXT,
+    statistics TEXT NOT NULL
+);
+
 CREATE TABLE upsert_works (
     qid INTEGER PRIMARY KEY,
     media_type INTEGER NOT NULL CHECK (media_type IN (1, 2)),

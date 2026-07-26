@@ -10,6 +10,7 @@ from pathlib import Path
 from media_catalog_builder.catalog_validation import validate_catalog_year
 from media_catalog_builder.classify import binding_to_source
 from media_catalog_builder.config import CatalogConfig
+from media_catalog_builder.database import sqlite_readonly_uri
 from media_catalog_builder.model import MediaType, SourceRecord
 from media_catalog_builder.names import catalog_skip_reason
 from media_catalog_builder.release import (
@@ -112,7 +113,7 @@ def build_skip_audit(records: Sequence[SourceRecord]) -> dict[str, object]:
 
 def _write_lookup_cases(catalog_path: Path, path: Path) -> None:
     try:
-        connection = sqlite3.connect(f"file:{catalog_path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(sqlite_readonly_uri(catalog_path), uri=True)
         connection.row_factory = sqlite3.Row
         try:
             rows = connection.execute(

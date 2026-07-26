@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from media_catalog_builder.config import CatalogConfig
-from media_catalog_builder.database import CatalogDatabase
+from media_catalog_builder.database import CatalogDatabase, sqlite_readonly_uri
 from media_catalog_builder.manifest import (
     Asset,
     DeltaPath,
@@ -270,7 +270,7 @@ def _validate_full_database(
 
 def _validate_delta_database(path: Path, descriptor: DeltaPath, catalog_schema: int) -> None:
     try:
-        connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(sqlite_readonly_uri(path), uri=True)
         connection.row_factory = sqlite3.Row
         try:
             integrity = connection.execute("PRAGMA integrity_check").fetchone()

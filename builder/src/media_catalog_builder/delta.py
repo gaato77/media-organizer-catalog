@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
+from media_catalog_builder.database import sqlite_readonly_uri
+
 _DELTA_SCHEMA = Path(__file__).resolve().parents[3] / "schema" / "delta-schema-v1.sql"
 _REQUIRED_DELTA_META = frozenset(
     {
@@ -21,6 +23,7 @@ _REQUIRED_DELTA_META = frozenset(
     }
 )
 type WorkRow = tuple[int, int, int, str, tuple[tuple[str, int], ...]]
+type StatRow = tuple[int, str, str | None, str]
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,7 +38,7 @@ class DeltaStats:
 class _Connection:
     def __init__(self, path: Path, *, readonly: bool = False) -> None:
         if readonly:
-            self.connection = sqlite3.connect(f"file:{path.as_posix()}?mode=ro", uri=True)
+            self.connection = sqlite3.connect(sqlite_readonly_uri(path), uri=True)
         else:
             self.connection = sqlite3.connect(path)
         self.connection.row_factory = sqlite3.Row
@@ -137,6 +140,25 @@ def _catalog_snapshot(path: Path, label: str) -> tuple[dict[str, str], dict[int,
     return metadata, rows
 
 
+def _catalog_statistics(path: Path, label: str) -> tuple[StatRow, ...]:
+    try:
+        with _Connection(path, readonly=True) as connection:
+            rows = connection.execute(
+                "SELECT rowid, tbl, idx, stat FROM sqlite_stat1 ORDER BY rowid"
+            ).fetchall()
+    except sqlite3.DatabaseError as exc:
+        raise ValueError(f"invalid {label} catalog statistics") from exc
+    return tuple(
+        (
+            int(row["rowid"]),
+            str(row["tbl"]),
+            None if row["idx"] is None else str(row["idx"]),
+            str(row["stat"]),
+        )
+        for row in rows
+    )
+
+
 def _create_delta_database(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.unlink(missing_ok=True)
@@ -162,6 +184,7 @@ def create_delta(
 ) -> DeltaStats:
     old_meta, old_rows = _catalog_snapshot(old_catalog, "source")
     new_meta, new_rows = _catalog_snapshot(new_catalog, "target")
+    new_statistics = _catalog_statistics(new_catalog, "target")
     if old_meta.get("catalog_version") != from_version:
         raise ValueError("source catalog version does not match from_version")
     if new_meta.get("catalog_version") != to_version:
@@ -199,6 +222,11 @@ def create_delta(
             connection.executemany(
                 "INSERT INTO target_meta(key, value) VALUES(?, ?)",
                 sorted(new_meta.items()),
+            )
+            connection.executemany(
+                "INSERT INTO target_stat1(row_id, table_name, index_name, statistics) "
+                "VALUES(?, ?, ?, ?)",
+                new_statistics,
             )
             connection.executemany(
                 "INSERT INTO delete_works(qid) VALUES(?)",
@@ -256,10 +284,28 @@ def _delta_metadata(path: Path) -> dict[str, str]:
 
 def _apply_delta_sql(temp_path: Path, delta_path: Path) -> None:
     connection = sqlite3.connect(temp_path)
+    target_statistics: tuple[StatRow, ...] | None = None
     try:
         connection.execute("PRAGMA foreign_keys = ON")
         connection.execute("ATTACH DATABASE ? AS delta_db", (str(delta_path),))
         try:
+            has_target_statistics = connection.execute(
+                "SELECT 1 FROM delta_db.sqlite_master "
+                "WHERE type = 'table' AND name = 'target_stat1'"
+            ).fetchone()
+            if has_target_statistics is not None:
+                target_statistics = tuple(
+                    (
+                        int(row[0]),
+                        str(row[1]),
+                        None if row[2] is None else str(row[2]),
+                        str(row[3]),
+                    )
+                    for row in connection.execute(
+                        "SELECT row_id, table_name, index_name, statistics "
+                        "FROM delta_db.target_stat1 ORDER BY row_id"
+                    )
+                )
             connection.execute("BEGIN IMMEDIATE")
             connection.execute(
                 "DELETE FROM works WHERE qid IN (SELECT qid FROM delta_db.delete_works)"
@@ -292,6 +338,13 @@ def _apply_delta_sql(temp_path: Path, delta_path: Path) -> None:
         connection.execute("ANALYZE")
         connection.execute("PRAGMA optimize")
         connection.commit()
+        if target_statistics is not None:
+            connection.execute("DELETE FROM sqlite_stat1")
+            connection.executemany(
+                "INSERT INTO sqlite_stat1(rowid, tbl, idx, stat) VALUES(?, ?, ?, ?)",
+                target_statistics,
+            )
+            connection.commit()
         connection.execute("VACUUM")
     finally:
         connection.close()

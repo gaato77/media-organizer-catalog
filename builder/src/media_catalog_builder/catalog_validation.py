@@ -3,12 +3,14 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from media_catalog_builder.database import sqlite_readonly_uri
+
 
 def validate_catalog_year(catalog_path: Path, required_year: int) -> None:
     if not 1 <= required_year <= 9999:
         raise ValueError("required year must be between 1 and 9999")
     try:
-        connection = sqlite3.connect(f"file:{catalog_path.as_posix()}?mode=ro", uri=True)
+        connection = sqlite3.connect(sqlite_readonly_uri(catalog_path), uri=True)
         try:
             row = connection.execute(
                 "SELECT COUNT(*) FROM works WHERE release_year <> ?",

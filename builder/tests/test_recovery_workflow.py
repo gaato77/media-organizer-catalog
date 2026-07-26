@@ -12,7 +12,7 @@ def test_1950_2015_recovery_reuses_existing_artifacts_and_keeps_diagnostics() ->
     assert "30157271026" in workflow
     assert "run-id: 30157271026" in workflow
     assert "github-token: ${{ secrets.GITHUB_TOKEN }}" in workflow
-    assert "actions/download-artifact@v4" in workflow
+    assert "actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093" in workflow
     assert "pattern: year-*" in workflow
     assert "probe_wikidata_year.py" not in workflow
     assert "consolidate_year_shards.py" in workflow
