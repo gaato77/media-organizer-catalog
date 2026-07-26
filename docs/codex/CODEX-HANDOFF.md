@@ -1,47 +1,48 @@
-# Codex handoff — distribución estable del catálogo
+# Codex handoff — Stable Catalog Phase A1
 
-## Rama
+## Single source of truth
 
-Trabajar exclusivamente en `codex/stable-channel-backfill` hasta abrir el PR contra `main`.
+Read and execute only:
 
-## Plan fuente de verdad
+`docs/codex/PHASE-A1-MASTER-PLAN.md`
 
-El plan completo está en el repositorio privado de la aplicación:
+That file is self-contained and is the authoritative plan for this Codex task.
+It supersedes conflicting instructions in earlier prompts, cross-repository plans, and handoffs.
 
-`gaato77/mediaOrganizerTool`
+## Repository and branch
 
-Rama:
+- Repository: `gaato77/media-organizer-catalog`
+- Working branch: `codex/stable-channel-backfill`
+- Pull-request base: `main`
 
-`codex/catalog-local-integration`
+Never commit directly to `main` and never merge the pull request.
 
-Archivo:
+## Current scope
 
-`docs/superpowers/plans/2026-07-25-stable-channel-and-historical-backfill.md`
+Execute Phase A1 only:
 
-El handoff coordinador está en:
+- implement strict component and stable-channel contracts;
+- implement verified component-pointer generation;
+- implement stable-channel assembly;
+- prepare the base, 2016–2025, and current-year publication workflows;
+- add offline/default and opt-in/network distribution tests;
+- document the distribution lifecycle;
+- run complete local verification;
+- open a green pull request.
 
-`docs/codex/CODEX-HANDOFF.md`
+Do not publish real assets during A1.
+The new historical workflow cannot be dispatched until it exists on the default branch. Real publication is Phase A2, after a human reviews and merges the A1 pull request.
 
-## Objetivo de esta rama
+## Execution method
 
-- publicar de forma durable el componente base 1950–2015 mediante GitHub Release;
-- construir, validar y publicar el suplemento 2016–2025;
-- mantener el componente del año vigente;
-- generar punteros de componentes con tamaños y SHA-256;
-- generar atómicamente `catalog/channel/stable.json`;
-- garantizar que ningún canal estable referencia assets inexistentes o no validados;
-- dejar CI verde y abrir un PR hacia `main`.
+Use the subagent-driven-development workflow described by the installed Superpowers skills:
 
-## Reglas
+- isolated worktree;
+- persistent ledger naming `docs/codex/PHASE-A1-MASTER-PLAN.md`;
+- fresh implementer per task;
+- separate spec-compliance and code-quality review per task;
+- focused commit after each approved task;
+- whole-branch final review;
+- no confirmation prompts between tasks.
 
-- usar worktree aislado;
-- aplicar TDD tarea por tarea;
-- implementador fresco y revisión separada por tarea;
-- mantener ledger persistente;
-- no fusionar hasta que CI y las comprobaciones de assets estén verdes;
-- no cambiar el esquema SQLite 1 ni el manifest de release 1;
-- GitHub Releases es el origen durable, no los artifacts temporales de Actions;
-- no hardcodear un año vigente permanente;
-- la primera integración de la aplicación usará paquetes completos, no deltas.
-
-Completar este plan antes de la fase final de integración en Media Organizer.
+Stop only for a genuine new blocker not resolved by the master plan. Include exact evidence in any blocker report.
