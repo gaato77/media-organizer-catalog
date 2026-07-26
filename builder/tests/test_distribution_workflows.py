@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -207,6 +208,16 @@ def test_supplement_shells_do_not_directly_interpolate_dispatch_version() -> Non
     assert '--title "Supplement catalog 2016-2025 - ${VERSION}"' in workflow
 
 
+def test_supplement_publication_requires_default_branch_dispatch() -> None:
+    workflow = _workflow(SUPPLEMENT_WORKFLOW)
+
+    publish_start = workflow.index("\n  publish:")
+    publish_header = workflow[publish_start : workflow.index("    runs-on:", publish_start)]
+    assert "inputs.publish == true" in publish_header
+    assert "github.ref_type == 'branch'" in publish_header
+    assert "github.ref_name == github.event.repository.default_branch" in publish_header
+
+
 def test_supplement_probes_exact_year_matrix_and_uploads_complete_shards() -> None:
     workflow = _workflow(SUPPLEMENT_WORKFLOW)
 
@@ -272,6 +283,34 @@ def test_supplement_write_permission_is_confined_to_gated_publication() -> None:
     assert "permissions:\n      actions: read\n      contents: write" in publish
     assert "group: stable-catalog-publication" in workflow
     assert "cancel-in-progress: false" in workflow
+
+
+def test_supplement_publication_lock_is_scoped_to_write_job() -> None:
+    workflow = _workflow(SUPPLEMENT_WORKFLOW)
+
+    workflow_header = workflow[: workflow.index("jobs:")]
+    probe = workflow[workflow.index("  probe:") : workflow.index("\n  build:")]
+    build = workflow[workflow.index("  build:") : workflow.index("\n  publish:")]
+    publish_start = workflow.index("\n  publish:")
+    publish_header = workflow[publish_start : workflow.index("    steps:", publish_start)]
+    assert "concurrency:" not in workflow_header
+    assert "stable-catalog-publication" not in probe
+    assert "stable-catalog-publication" not in build
+    assert "concurrency:\n      group: stable-catalog-publication" in publish_header
+    assert "cancel-in-progress: false" in publish_header
+
+
+def test_supplement_write_job_actions_are_pinned_to_reviewed_commits() -> None:
+    workflow = _workflow(SUPPLEMENT_WORKFLOW)
+
+    publish = workflow[workflow.index("\n  publish:") :]
+    actions = re.findall(r"^\s+(?:- )?uses: ([^@\s]+)@([^\s]+)", publish, flags=re.MULTILINE)
+    assert actions == [
+        ("actions/checkout", "11bd71901bbe5b1630ceea73d27597364c9af683"),
+        ("actions/setup-python", "a26af69be951a213d495a4c3e4e4022e16d87065"),
+        ("actions/download-artifact", "d3f86a106a0bac45b974a628896c90dbdf5c8093"),
+        ("actions/upload-artifact", "ea165f8d65b6e75b540449e92b4886f43607fa02"),
+    ]
 
 
 def test_supplement_release_is_immutable_idempotent_and_publicly_verified() -> None:
