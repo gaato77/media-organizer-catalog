@@ -98,6 +98,7 @@ jobs:
         if: steps.preflight.outcome == 'success'
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@v5
         if: steps.preflight.outcome == 'success'
@@ -241,9 +242,6 @@ jobs:
             multi-year-release
             multi-year-release-summary.json
             multi-year-skip-audit.json
-            local-release-inventory.tsv
-            existing-release-inventory.tsv
-            public-release-inventory.tsv
           if-no-files-found: warn
           retention-days: 14
 
@@ -403,6 +401,7 @@ jobs:
         continue-on-error: true
         shell: bash
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RELEASE_TAG: base-1950-2015-2026.07.25
         run: |
           set -euo pipefail
@@ -459,10 +458,26 @@ jobs:
             exit 0
           fi
           git commit -m "catalog: publish base 1950-2015"
+          gh auth setup-git
           if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
             echo "::error::Generated catalog push failed (possibly non-fast-forward); no force push was attempted. Re-run after the competing publication completes." >&2
             exit 1
           fi
+
+      - name: Upload publication diagnostics
+        if: always() && inputs.publish == true
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: base-publication-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            existing-release.json
+            public-release.json
+            local-release-inventory.tsv
+            existing-release-inventory.tsv
+            public-release-inventory.tsv
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Fail after preserving diagnostics
         if: always() && steps.package.outcome != 'success' || always() && (steps.preflight.outcome != 'success' || steps.download.outcome != 'success' || steps.assemble.outcome != 'success' || steps.consolidate.outcome != 'success' || (inputs.publish == true && steps.publish_release.outcome != 'success') || (inputs.publish == true && steps.verify_release.outcome != 'success') || (inputs.publish == true && steps.update_pointers.outcome != 'success'))

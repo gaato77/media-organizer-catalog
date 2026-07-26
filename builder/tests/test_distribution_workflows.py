@@ -103,6 +103,52 @@ def test_base_pointer_commit_is_release_gated_and_confined_to_generated_files() 
     )
 
 
+def test_checkout_does_not_persist_write_credentials_and_push_auth_is_deferred() -> None:
+    workflow = _workflow(RECOVERY_WORKFLOW)
+
+    checkout = workflow[
+        workflow.index("- uses: actions/checkout@v4") : workflow.index(
+            "- uses: actions/setup-python@v5"
+        )
+    ]
+    assert "persist-credentials: false" in checkout
+
+    publication = workflow[workflow.index("Update base pointer and stable channel") :]
+    assert "GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}" in publication
+    _assert_ordered(
+        publication,
+        'git commit -m "catalog: publish base 1950-2015"',
+        "gh auth setup-git",
+        "git push origin",
+    )
+
+
+def test_publication_diagnostics_are_uploaded_after_all_publication_stages() -> None:
+    workflow = _workflow(RECOVERY_WORKFLOW)
+
+    _assert_ordered(
+        workflow,
+        "Publish immutable base release",
+        "Public release verification",
+        "Update base pointer and stable channel",
+        "Upload publication diagnostics",
+        "Fail after preserving diagnostics",
+    )
+    diagnostics = workflow[
+        workflow.index("Upload publication diagnostics") : workflow.index(
+            "Fail after preserving diagnostics"
+        )
+    ]
+    assert "if: always() && inputs.publish == true" in diagnostics
+    assert "continue-on-error: true" in diagnostics
+    for inventory in (
+        "local-release-inventory.tsv",
+        "existing-release-inventory.tsv",
+        "public-release-inventory.tsv",
+    ):
+        assert inventory in diagnostics
+
+
 def test_base_recovery_final_gate_covers_every_requested_stage() -> None:
     workflow = _workflow(RECOVERY_WORKFLOW)
 
