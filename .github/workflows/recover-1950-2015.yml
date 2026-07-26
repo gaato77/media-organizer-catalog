@@ -2,6 +2,17 @@ name: Recover 1950-2015 catalog from completed shards
 
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish the immutable base release and update the stable channel"
+        required: true
+        type: boolean
+        default: false
+      source_run_id:
+        description: "Completed workflow run containing all 66 yearly artifacts"
+        required: false
+        type: string
+        default: "30157271026"
   push:
     branches:
       - main
@@ -10,10 +21,10 @@ on:
 
 permissions:
   actions: read
-  contents: read
+  contents: write
 
 concurrency:
-  group: recover-1950-2015-catalog
+  group: stable-catalog-publication
   cancel-in-progress: false
 
 jobs:
@@ -21,51 +32,137 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - name: Preflight source workflow artifacts
+        id: preflight
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id || '30157271026' }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${SOURCE_RUN_ID}" =~ ^[0-9]+$ ]]; then
+            echo "::error::source_run_id must contain only decimal digits." >&2
+            exit 1
+          fi
+          if ! gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}" \
+            > source-run.json; then
+            echo "::error::Source workflow run ${SOURCE_RUN_ID} was not found or is inaccessible. Supply a valid completed run ID." >&2
+            exit 1
+          fi
+          if ! gh api --paginate --slurp \
+            "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/artifacts?per_page=100" \
+            > source-artifact-pages.json; then
+            echo "::error::Could not list artifacts for source run ${SOURCE_RUN_ID}. Check repository access and retry." >&2
+            exit 1
+          fi
+          python - <<'PY'
+          import json
+          import os
+          import re
+          from collections import Counter
+          from pathlib import Path
+
+          run_id = os.environ["SOURCE_RUN_ID"]
+          run = json.loads(Path("source-run.json").read_text(encoding="utf-8"))
+          if run.get("status") != "completed" or run.get("conclusion") != "success":
+              raise SystemExit(
+                  f"::error::Source workflow run {run_id} must have completed successfully; "
+                  f"status={run.get('status')!r}, conclusion={run.get('conclusion')!r}."
+              )
+
+          pages = json.loads(Path("source-artifact-pages.json").read_text(encoding="utf-8"))
+          artifacts = [artifact for page in pages for artifact in page.get("artifacts", [])]
+          expected = {f"year-{year}" for year in range(1950, 2016)}
+          matching = [artifact for artifact in artifacts if re.fullmatch(r"year-\d{4}", artifact["name"])]
+          counts = Counter(artifact["name"] for artifact in matching)
+          missing = sorted(expected - counts.keys())
+          unexpected = sorted(counts.keys() - expected)
+          duplicates = sorted(name for name, count in counts.items() if count != 1)
+          expired = sorted(artifact["name"] for artifact in matching if artifact.get("expired"))
+          if missing or unexpected or duplicates or expired or len(matching) != 66:
+              details = (
+                  f"missing={missing}, unexpected={unexpected}, duplicates={duplicates}, "
+                  f"expired={expired}, matching_count={len(matching)}"
+              )
+              raise SystemExit(
+                  f"::error::Source run {run_id} does not contain exactly one usable artifact "
+                  f"for every year 1950-2015 ({details}). Re-run the shard workflow and supply "
+                  "its new source_run_id before these temporary artifacts expire."
+              )
+          print(f"Validated all 66 source artifacts in completed run {run_id}.")
+          PY
+          echo "source_run_id=${SOURCE_RUN_ID}" >> "${GITHUB_OUTPUT}"
+
       - uses: actions/checkout@v4
+        if: steps.preflight.outcome == 'success'
+        with:
+          fetch-depth: 0
+
       - uses: actions/setup-python@v5
+        if: steps.preflight.outcome == 'success'
         with:
           python-version: "3.12"
           cache: pip
           cache-dependency-path: builder/pyproject.toml
-      - run: python -m pip install -e "builder[test]"
+
+      - name: Install builder
+        if: steps.preflight.outcome == 'success'
+        run: python -m pip install -e "builder[test]"
 
       - name: Download the 66 completed yearly artifacts
+        id: download
+        if: steps.preflight.outcome == 'success'
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
-          repository: gaato77/media-organizer-catalog
-          run-id: 30157271026
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.preflight.outputs.source_run_id }} # default run-id: 30157271026
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: year-*
           path: downloaded-years
           merge-multiple: false
 
       - name: Assemble the annual shard tree
+        id: assemble
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
         shell: bash
         run: |
+          set -euo pipefail
           mkdir -p multi-year-probe-output/years
           for year in $(seq 1950 2015); do
             source="downloaded-years/year-${year}"
             target="multi-year-probe-output/years/${year}"
-            test -f "${source}/summary.json"
-            test -f "${source}/movie.json"
-            test -f "${source}/series.json"
+            if [ ! -f "${source}/summary.json" ] || \
+              [ ! -f "${source}/movie.json" ] || \
+              [ ! -f "${source}/series.json" ]; then
+              echo "::error::Artifact year-${year} is incomplete; summary.json, movie.json, and series.json are required." >&2
+              exit 1
+            fi
             mkdir -p "${target}"
             cp -a "${source}/." "${target}/"
           done
 
       - name: Consolidate completed annual shards
+        id: consolidate
+        if: steps.assemble.outcome == 'success'
+        continue-on-error: true
+        shell: bash
         run: |
+          set -euo pipefail
           python builder/scripts/consolidate_year_shards.py \
             --output-dir multi-year-probe-output \
             --start-year 1950 \
             --end-year 2015 | tee multi-year-consolidation.log
 
-      # Representative lookup cases are derived from the final merged SQLite catalog.
       - name: Build and validate the recovered package
         id: package
+        if: steps.consolidate.outcome == 'success'
         continue-on-error: true
         shell: bash
         run: |
+          set -euo pipefail
           rm -rf multi-year-release multi-year-release-work
           set +e
           python - <<'PY' > recovery-build.log 2>&1
@@ -103,8 +200,9 @@ jobs:
           print(Path("multi-year-release-summary.json").read_text(encoding="utf-8"))
           PY
           exit_code=$?
+          set -e
           cat recovery-build.log
-          echo "exit_code=${exit_code}" >> "$GITHUB_OUTPUT"
+          echo "exit_code=${exit_code}" >> "${GITHUB_OUTPUT}"
           exit "${exit_code}"
 
       - name: Record recovery file inventory
@@ -113,7 +211,8 @@ jobs:
         run: |
           set +e
           {
-            echo "Recovery source run: 30157271026"
+            echo "Recovery source run: ${{ steps.preflight.outputs.source_run_id }}"
+            echo "Preflight outcome: ${{ steps.preflight.outcome }}"
             echo "Package outcome: ${{ steps.package.outcome }}"
             echo "Package exit code: ${{ steps.package.outputs.exit_code }}"
             echo
@@ -127,10 +226,13 @@ jobs:
 
       - name: Upload recovery diagnostics
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: recovery-diagnostics-1950-2015
           path: |
+            source-run.json
+            source-artifact-pages.json
             recovery-build.log
             recovery-files.txt
             multi-year-consolidation.log
@@ -139,6 +241,9 @@ jobs:
             multi-year-release
             multi-year-release-summary.json
             multi-year-skip-audit.json
+            local-release-inventory.tsv
+            existing-release-inventory.tsv
+            public-release-inventory.tsv
           if-no-files-found: warn
           retention-days: 14
 
@@ -159,6 +264,206 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Publish immutable base release
+        id: publish_release
+        if: always() && inputs.publish == true && steps.package.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: base-1950-2015-2026.07.25
+        run: |
+          set -euo pipefail
+          assets=(
+            multi-year-release/*
+            multi-year-release-summary.json
+            multi-year-skip-audit.json
+          )
+          : > local-release-inventory.tsv
+          for asset in "${assets[@]}"; do
+            test -f "${asset}"
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> local-release-inventory.tsv
+          done
+          sort -o local-release-inventory.tsv local-release-inventory.tsv
+          if [ -n "$(cut -f1 local-release-inventory.tsv | uniq -d)" ]; then
+            echo "::error::Validated package contains duplicate release asset names." >&2
+            exit 1
+          fi
+
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status="$(curl --silent --show-error --output existing-release.json \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${api_url}")"
+          if [ "${status}" = 200 ]; then
+            rm -rf existing-release-assets
+            mkdir existing-release-assets
+            gh release download "${RELEASE_TAG}" --dir existing-release-assets
+            : > existing-release-inventory.tsv
+            while IFS= read -r -d '' asset; do
+              printf '%s\t%s\t%s\n' \
+                "$(basename "${asset}")" \
+                "$(stat -c '%s' "${asset}")" \
+                "$(sha256sum "${asset}" | awk '{print $1}')" \
+                >> existing-release-inventory.tsv
+            done < <(find existing-release-assets -maxdepth 1 -type f -print0)
+            sort -o existing-release-inventory.tsv existing-release-inventory.tsv
+            if ! cmp --silent local-release-inventory.tsv existing-release-inventory.tsv; then
+              diff --unified local-release-inventory.tsv existing-release-inventory.tsv || true
+              echo "::error::Existing immutable release ${RELEASE_TAG} differs by asset name, size, or SHA-256. No release or pointer was changed." >&2
+              exit 1
+            fi
+            echo "Existing immutable release is byte-for-byte equivalent; continuing idempotently."
+          elif [ "${status}" = 404 ]; then
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --target "${GITHUB_SHA}" \
+              --title "Base catalog 1950-2015 — 2026.07.25" \
+              --notes "Validated immutable base movie and series catalog for years 1950 through 2015."
+          else
+            echo "::error::Could not inspect immutable release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
+            exit 1
+          fi
+
+      - name: Public release verification
+        id: verify_release
+        if: always() && inputs.publish == true && steps.publish_release.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          RELEASE_TAG: base-1950-2015-2026.07.25
+        run: |
+          set -euo pipefail
+          public_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status=000
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --output public-release.json \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${public_api}")"
+            if [ "${status}" = 200 ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "${status}" != 200 ]; then
+            echo "::error::Release ${RELEASE_TAG} is not publicly visible; unauthenticated GitHub API returned HTTP ${status}. Pointers remain unchanged." >&2
+            exit 1
+          fi
+          python - <<'PY' > public-release-assets.tsv
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path("public-release.json").read_text(encoding="utf-8"))
+          if release.get("draft") or release.get("prerelease"):
+              raise SystemExit("::error::The base release must be public, non-draft, and non-prerelease.")
+          for asset in release.get("assets", []):
+              print(asset["name"], asset["size"], asset["browser_download_url"], sep="\t")
+          PY
+          rm -rf public-release-assets
+          mkdir public-release-assets
+          while IFS=$'\t' read -r name declared_size url; do
+            if [[ -z "${name}" || "${name}" == "." || "${name}" == ".." || \
+              "${name}" == */* || "${name}" == *\\* ]]; then
+              echo "::error::Public release returned an unsafe asset name: ${name}" >&2
+              exit 1
+            fi
+            curl --fail --silent --show-error --location --retry 3 \
+              --output "public-release-assets/${name}" "${url}"
+            actual_size="$(stat -c '%s' "public-release-assets/${name}")"
+            if [ "${actual_size}" != "${declared_size}" ]; then
+              echo "::error::Public asset ${name} size differs from its release metadata." >&2
+              exit 1
+            fi
+          done < public-release-assets.tsv
+          : > public-release-inventory.tsv
+          while IFS= read -r -d '' asset; do
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> public-release-inventory.tsv
+          done < <(find public-release-assets -maxdepth 1 -type f -print0)
+          sort -o public-release-inventory.tsv public-release-inventory.tsv
+          if ! cmp --silent local-release-inventory.tsv public-release-inventory.tsv; then
+            diff --unified local-release-inventory.tsv public-release-inventory.tsv || true
+            echo "::error::Public release assets do not match the validated package byte-for-byte. Pointers remain unchanged." >&2
+            exit 1
+          fi
+
+      - name: Update base pointer and stable channel
+        id: update_pointers
+        if: always() && inputs.publish == true && steps.verify_release.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          RELEASE_TAG: base-1950-2015-2026.07.25
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::Unrelated tracked change detected before generated catalog update." >&2
+            git status --short --untracked-files=no
+            exit 1
+          fi
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+
+          mkdir -p catalog/components catalog/channel
+          python builder/scripts/write_component_pointer.py \
+            --release-dir multi-year-release \
+            --installed-database multi-year-release-work/catalog.sqlite \
+            --component-id base-1950-2015 \
+            --component-type base \
+            --from-year 1950 \
+            --to-year 2015 \
+            --release-tag "${RELEASE_TAG}" \
+            --priority 100 \
+            --output catalog/components/base.json
+
+          component_arguments=()
+          shopt -s nullglob
+          for pointer in catalog/components/*.json; do
+            if [ -f "${pointer}" ]; then
+              component_arguments+=(--component "${pointer}")
+            fi
+          done
+          if [ "${#component_arguments[@]}" -eq 0 ]; then
+            echo "::error::No component pointers exist; refusing to create an empty stable channel." >&2
+            exit 1
+          fi
+          python builder/scripts/assemble_stable_channel.py \
+            "${component_arguments[@]}" \
+            --published-at "2026-07-25T17:30:00Z" \
+            --output catalog/channel/stable.json
+
+          git add catalog/components/base.json catalog/channel/stable.json
+          while IFS= read -r changed; do
+            case "${changed}" in
+              catalog/components/base.json|catalog/channel/stable.json) ;;
+              *)
+                echo "::error::Unrelated tracked change detected before generated commit: ${changed}" >&2
+                exit 1
+                ;;
+            esac
+          done < <({ git diff --name-only; git diff --cached --name-only; } | sort -u)
+          if git diff --cached --quiet; then
+            echo "Generated catalog pointers are already current."
+            exit 0
+          fi
+          git commit -m "catalog: publish base 1950-2015"
+          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "::error::Generated catalog push failed (possibly non-fast-forward); no force push was attempted. Re-run after the competing publication completes." >&2
+            exit 1
+          fi
+
       - name: Fail after preserving diagnostics
-        if: always() && steps.package.outcome != 'success'
+        if: always() && steps.package.outcome != 'success' || always() && (steps.preflight.outcome != 'success' || steps.download.outcome != 'success' || steps.assemble.outcome != 'success' || steps.consolidate.outcome != 'success' || (inputs.publish == true && steps.publish_release.outcome != 'success') || (inputs.publish == true && steps.verify_release.outcome != 'success') || (inputs.publish == true && steps.update_pointers.outcome != 'success'))
         run: exit 1
