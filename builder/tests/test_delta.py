@@ -142,6 +142,43 @@ def test_unchanged_delta_updates_metadata_and_matches_target(
     assert _sha256(output) == _sha256(new)
 
 
+def test_delta_preserves_target_statistics_order_for_exact_checksum(
+    tmp_path: Path,
+    schema_path: Path,
+) -> None:
+    import sqlite3
+
+    old = tmp_path / "old.sqlite"
+    new = tmp_path / "new.sqlite"
+    delta = tmp_path / "update.sqlite"
+    output = tmp_path / "updated.sqlite"
+    records = (_record(1, "Example", ("example",)),)
+    _catalog(old, schema_path, "2026.07.17", records)
+    _catalog(new, schema_path, "2026.07.24", records)
+    with sqlite3.connect(new) as connection:
+        statistics = connection.execute(
+            "SELECT tbl, idx, stat FROM sqlite_stat1 ORDER BY rowid DESC"
+        ).fetchall()
+        connection.execute("DELETE FROM sqlite_stat1")
+        connection.executemany(
+            "INSERT INTO sqlite_stat1(tbl, idx, stat) VALUES(?, ?, ?)",
+            statistics,
+        )
+        connection.commit()
+        connection.execute("VACUUM")
+
+    create_delta(
+        old,
+        new,
+        delta,
+        from_version="2026.07.17",
+        to_version="2026.07.24",
+    )
+    apply_delta(old, delta, output)
+
+    assert _sha256(output) == _sha256(new)
+
+
 def test_apply_rejects_wrong_source_version_without_creating_output(
     tmp_path: Path,
     schema_path: Path,
