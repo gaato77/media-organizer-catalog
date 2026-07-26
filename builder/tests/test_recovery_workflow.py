@@ -8,6 +8,19 @@ import pytest
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_1950_2015_recovery_is_manual_only_and_publishes_from_default_branch() -> None:
+    workflow = (ROOT / ".github" / "workflows" / "recover-1950-2015.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "workflow_dispatch:" in workflow
+    assert "\n  push:" not in workflow
+    assert (
+        "if: inputs.publish == true && github.ref_type == 'branch' "
+        "&& github.ref_name == github.event.repository.default_branch"
+    ) in workflow
+
+
 def test_1950_2015_recovery_reuses_existing_artifacts_and_keeps_diagnostics() -> None:
     workflow = (ROOT / ".github" / "workflows" / "recover-1950-2015.yml").read_text(
         encoding="utf-8"
