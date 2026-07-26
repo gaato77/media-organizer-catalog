@@ -14,8 +14,8 @@ def test_current_year_workflow_is_incremental_validated_and_publish_safe() -> No
     assert "publish:" in workflow
     assert "Resolve current-year plan" in workflow
     assert "resolve_current_year_plan" in workflow
-    assert "actions/cache/restore@v4" in workflow
-    assert "actions/cache/save@v4" in workflow
+    assert "actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684" in workflow
+    assert "actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684" in workflow
     assert "probe_wikidata_year.py" in workflow
     assert "--through" in workflow
     assert "--refresh-month" in workflow

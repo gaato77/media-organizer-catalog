@@ -6,6 +6,15 @@ RECOVERY_WORKFLOW = ROOT / ".github" / "workflows" / "recover-1950-2015.yml"
 SUPPLEMENT_WORKFLOW = ROOT / ".github" / "workflows" / "build-historical-range.yml"
 CURRENT_YEAR_WORKFLOW = ROOT / ".github" / "workflows" / "current-year-catalog.yml"
 CI_WORKFLOW = ROOT / ".github" / "workflows" / "ci.yml"
+PUBLICATION_WORKFLOWS = (RECOVERY_WORKFLOW, SUPPLEMENT_WORKFLOW, CURRENT_YEAR_WORKFLOW)
+REVIEWED_ACTIONS = {
+    "actions/cache/restore": "5a3ec84eff668545956fd18022155c47e93e2684",
+    "actions/cache/save": "5a3ec84eff668545956fd18022155c47e93e2684",
+    "actions/checkout": "11bd71901bbe5b1630ceea73d27597364c9af683",
+    "actions/download-artifact": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    "actions/setup-python": "a26af69be951a213d495a4c3e4e4022e16d87065",
+    "actions/upload-artifact": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+}
 
 
 def _workflow(path: Path) -> str:
@@ -110,8 +119,8 @@ def test_checkout_does_not_persist_write_credentials_and_push_auth_is_deferred()
     workflow = _workflow(RECOVERY_WORKFLOW)
 
     checkout = workflow[
-        workflow.index("- uses: actions/checkout@v4") : workflow.index(
-            "- uses: actions/setup-python@v5"
+        workflow.index("- uses: actions/checkout@") : workflow.index(
+            "- uses: actions/setup-python@"
         )
     ]
     assert "persist-credentials: false" in checkout
@@ -141,7 +150,7 @@ def test_dry_run_build_job_is_read_only_and_write_permission_is_publish_gated() 
     assert "Publish immutable base release" in publish
     assert "complete-1950-2015-catalog-recovered" in recover
     assert "complete-1950-2015-catalog-recovered" in publish
-    assert workflow.count("- uses: actions/checkout@v4") == 2
+    assert len(re.findall(r"- uses: actions/checkout@", workflow)) == 2
     assert workflow.count("persist-credentials: false") == 2
 
 
@@ -532,3 +541,41 @@ def test_ci_runs_checksum_pinned_official_actionlint_for_every_workflow() -> Non
     assert 'find .github/workflows -type f -name "*.yml"' in workflow
     assert "actionlint -color" in workflow
     assert "latest" not in workflow[workflow.index("Install actionlint") :]
+
+
+def test_every_publication_job_uses_the_shared_non_cancelling_lock() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        workflow_header = workflow[: workflow.index("jobs:")]
+        publish_start = workflow.index("\n  publish:")
+        publish_header = workflow[publish_start : workflow.index("    steps:", publish_start)]
+
+        assert "stable-catalog-publication" not in workflow_header, path.name
+        assert "concurrency:\n      group: stable-catalog-publication" in publish_header, path.name
+        assert "cancel-in-progress: false" in publish_header, path.name
+
+
+def test_every_publication_job_is_default_branch_gated_and_least_privileged() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        publish_start = workflow.index("\n  publish:")
+        publish_header = workflow[publish_start : workflow.index("    steps:", publish_start)]
+
+        assert "github.ref_type == 'branch'" in publish_header, path.name
+        assert "github.ref_name == github.event.repository.default_branch" in publish_header, (
+            path.name
+        )
+        assert "permissions:\n      actions: read\n      contents: write" in publish_header, (
+            path.name
+        )
+
+
+def test_every_publication_workflow_action_is_pinned_to_a_reviewed_commit() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        actions = re.findall(r"^\s+(?:- )?uses: ([^@\s]+)@([^\s]+)", workflow, flags=re.MULTILINE)
+
+        assert actions, path.name
+        assert all(REVIEWED_ACTIONS.get(action) == reference for action, reference in actions), (
+            path.name
+        )
