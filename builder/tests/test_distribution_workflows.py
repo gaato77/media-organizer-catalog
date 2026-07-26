@@ -442,17 +442,23 @@ def test_current_year_publication_lock_is_scoped_and_actions_are_pinned() -> Non
     ]
 
 
-def test_current_year_release_replaces_same_version_and_verifies_public_bytes() -> None:
+def test_current_year_release_uses_unique_immutable_tag_and_verifies_public_bytes() -> None:
     workflow = _workflow(CURRENT_YEAR_WORKFLOW)
 
+    assert "GITHUB_RUN_ID: ${{ github.run_id }}" in workflow
+    assert "GITHUB_RUN_ATTEMPT: ${{ github.run_attempt }}" in workflow
+    assert 'run_id = os.environ["GITHUB_RUN_ID"]' in workflow
+    assert 'run_attempt = os.environ["GITHUB_RUN_ATTEMPT"]' in workflow
+    assert 'f"release_tag=current-{plan.year}-{version}-run-{run_id}-{run_attempt}\\n"' in workflow
     assert "gh release create" in workflow
     assert "gh release download" in workflow
     assert "existing-release-inventory.tsv" in workflow
     assert "local-release-inventory.tsv" in workflow
     assert "sha256sum" in workflow
-    assert 'gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber' in workflow
-    assert "Existing current-year release differs; replacing its assets." in workflow
-    assert "Existing immutable current-year release" not in workflow
+    assert "--clobber" not in workflow
+    assert "gh release upload" not in workflow
+    assert "Existing immutable current-year publication" in workflow
+    assert "No release or pointer was changed" in workflow
     assert "Public release verification" in workflow
     assert "public-release-inventory.tsv" in workflow
     verification = workflow[
@@ -465,9 +471,32 @@ def test_current_year_release_replaces_same_version_and_verifies_public_bytes() 
         workflow,
         "Build and validate current-year package",
         "Publish validated current-year release",
-        'gh release upload "${RELEASE_TAG}" "${assets[@]}" --clobber',
         "Public release verification",
         "Update current-year pointers and stable channel",
+    )
+
+
+def test_current_year_stale_collision_fails_without_mutation_or_rollback() -> None:
+    workflow = _workflow(CURRENT_YEAR_WORKFLOW)
+    publication = workflow[
+        workflow.index("Publish validated current-year release") : workflow.index(
+            "Public release verification"
+        )
+    ]
+
+    assert "cmp --silent local-release-inventory.tsv existing-release-inventory.tsv" in publication
+    inventory_diff = "diff --unified local-release-inventory.tsv existing-release-inventory.tsv"
+    assert inventory_diff in publication
+    assert "exit 1" in publication
+    assert "gh release delete" not in publication
+    assert "gh release delete-asset" not in publication
+    assert "gh release upload" not in publication
+    _assert_ordered(
+        publication,
+        "gh release download",
+        "existing-release-inventory.tsv",
+        "cmp --silent",
+        "No release or pointer was changed",
     )
 
 
