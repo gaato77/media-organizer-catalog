@@ -1,0 +1,607 @@
+name: Build and publish 2016-2025 catalog supplement
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version in YYYY.MM.DD format"
+        required: true
+        type: string
+      publish:
+        description: "Publish the immutable supplement release and update the stable channel"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: stable-catalog-publication
+  cancel-in-progress: false
+
+jobs:
+  probe:
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        year: [2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025]
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Validate release version
+        id: validate
+        continue-on-error: true
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          if [[ ! "${VERSION}" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]{2}$ ]]; then
+            echo "::error::Version must match YYYY.MM.DD." >&2
+            exit 1
+          fi
+          python - <<'PY' | tee version-validation.log
+          import os
+          from datetime import datetime
+
+          version = os.environ["VERSION"]
+          try:
+              datetime.strptime(version, "%Y.%m.%d")
+          except ValueError as error:
+              raise SystemExit(f"::error::Version must match YYYY.MM.DD: {error}") from error
+          print(f"Validated release version {version}.")
+          PY
+
+      - uses: actions/checkout@v4
+        if: steps.validate.outcome == 'success'
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        if: steps.validate.outcome == 'success'
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+
+      - name: Install builder
+        if: steps.validate.outcome == 'success'
+        run: python -m pip install -e "builder[test]"
+
+      - name: Probe complete historical year
+        id: probe
+        if: steps.validate.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          YEAR: ${{ matrix.year }}
+        run: |
+          set -euo pipefail
+          rm -rf annual-probe-output
+          python builder/scripts/probe_wikidata_year.py \
+            --config builder/config/catalog.toml \
+            --output-dir annual-probe-output \
+            --year "${YEAR}" \
+            --limit 50000 | tee annual-probe.log
+
+      - name: Upload yearly probe diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplement-probe-diagnostics-${{ matrix.year }}
+          path: |
+            version-validation.log
+            annual-probe.log
+            annual-probe-output
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload completed yearly shard
+        if: steps.probe.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: year-${{ matrix.year }}
+          path: |
+            annual-probe-output/summary.json
+            annual-probe-output/movie.json
+            annual-probe-output/series.json
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail after preserving probe diagnostics
+        if: always() && (steps.validate.outcome != 'success' || steps.probe.outcome != 'success')
+        run: exit 1
+
+  build:
+    needs: probe
+    permissions:
+      actions: read
+      contents: read
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+
+      - name: Install builder
+        run: python -m pip install -e "builder[test]"
+
+      - name: Download all ten yearly artifacts
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          pattern: year-*
+          path: downloaded-years
+          merge-multiple: false
+
+      - name: Assemble the annual shard tree
+        id: assemble
+        if: steps.download.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p multi-year-probe-output/years
+          for year in $(seq 2016 2025); do
+            source="downloaded-years/year-${year}"
+            target="multi-year-probe-output/years/${year}"
+            if [ ! -f "${source}/summary.json" ] || \
+              [ ! -f "${source}/movie.json" ] || \
+              [ ! -f "${source}/series.json" ]; then
+              echo "::error::Artifact year-${year} is incomplete; summary.json, movie.json, and series.json are required." >&2
+              exit 1
+            fi
+            mkdir -p "${target}"
+            cp "${source}/summary.json" "${target}/summary.json"
+            cp "${source}/movie.json" "${target}/movie.json"
+            cp "${source}/series.json" "${target}/series.json"
+          done
+          actual_count="$(find downloaded-years -mindepth 1 -maxdepth 1 -type d -name 'year-*' | wc -l)"
+          if [ "${actual_count}" -ne 10 ]; then
+            echo "::error::Expected exactly ten yearly artifacts; found ${actual_count}." >&2
+            exit 1
+          fi
+
+      - name: Consolidate annual shards
+        id: consolidate
+        if: steps.assemble.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python builder/scripts/consolidate_year_shards.py \
+            --output-dir multi-year-probe-output \
+            --start-year 2016 \
+            --end-year 2025 | tee multi-year-consolidation.log
+
+      - name: Build and validate supplement package
+        id: package
+        if: steps.consolidate.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          rm -rf multi-year-release multi-year-release-work
+          python - <<'PY' 2>&1 | tee supplement-build.log
+          import json
+          import os
+          import shutil
+          from datetime import UTC, datetime
+          from pathlib import Path
+
+          from media_catalog_builder.config import CatalogConfig
+          from media_catalog_builder.probe_release import build_probe_release
+
+          version = os.environ["VERSION"]
+          published_at = datetime.strptime(version, "%Y.%m.%d").replace(tzinfo=UTC)
+          config = CatalogConfig.load(Path("builder/config/catalog.toml"))
+          release_summary = build_probe_release(
+              Path("multi-year-probe-output"),
+              Path("multi-year-release-work"),
+              Path("multi-year-release"),
+              config=config,
+              schema_path=Path("schema/catalog-schema-v1.sql"),
+              version=version,
+              published_at=published_at,
+              minimum_app_version="0.1.0",
+          )
+          source_summary = json.loads(
+              Path("multi-year-probe-output/summary.json").read_text(encoding="utf-8")
+          )
+          combined = {"source": source_summary, "release": release_summary}
+          Path("multi-year-release-summary.json").write_text(
+              json.dumps(combined, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          shutil.copyfile(
+              "multi-year-release-work/skip-audit.json",
+              "multi-year-skip-audit.json",
+          )
+          print(Path("multi-year-release-summary.json").read_text(encoding="utf-8"))
+          PY
+
+      - name: Verify final SQLite year range
+        id: verify_database
+        if: steps.package.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY' | tee supplement-database-validation.txt
+          import sqlite3
+          from pathlib import Path
+
+          database = Path("multi-year-release-work/catalog.sqlite").resolve()
+          database_uri = f"{database.as_uri()}?mode=ro"
+          with sqlite3.connect(database_uri, uri=True) as connection:
+              connection.execute("PRAGMA query_only = ON")
+              integrity = connection.execute("PRAGMA integrity_check").fetchone()
+              bounds = connection.execute(
+                  "SELECT MIN(release_year), MAX(release_year), COUNT(DISTINCT release_year) "
+                  "FROM works"
+              ).fetchone()
+          if integrity != ("ok",):
+              raise SystemExit(f"::error::Final SQLite integrity check failed: {integrity!r}")
+          if bounds != (2016, 2025, 10):
+              raise SystemExit(
+                  "::error::Final SQLite must contain exactly ten distinct years spanning "
+                  f"2016-2025; observed {bounds!r}."
+              )
+          print("Final SQLite integrity and 2016-2025 year range verified.")
+          PY
+
+      - name: Record supplement build inventory
+        if: always()
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set +e
+          {
+            echo "Version: ${VERSION}"
+            echo "Download outcome: ${{ steps.download.outcome }}"
+            echo "Assemble outcome: ${{ steps.assemble.outcome }}"
+            echo "Consolidate outcome: ${{ steps.consolidate.outcome }}"
+            echo "Package outcome: ${{ steps.package.outcome }}"
+            echo "Database verification outcome: ${{ steps.verify_database.outcome }}"
+            echo
+          } > supplement-build-files.txt
+          for directory in downloaded-years multi-year-probe-output multi-year-release-work multi-year-release; do
+            if [ -d "${directory}" ]; then
+              find "${directory}" -maxdepth 3 -type f -printf '%s %p\n'
+            fi
+          done | sort -n >> supplement-build-files.txt
+          cat supplement-build-files.txt
+
+      - name: Upload supplement build diagnostics
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplement-build-diagnostics-${{ inputs.version }}
+          path: |
+            supplement-build.log
+            supplement-build-files.txt
+            supplement-database-validation.txt
+            multi-year-consolidation.log
+            multi-year-probe-output/summary.json
+            multi-year-release-work
+            multi-year-release
+            multi-year-release-summary.json
+            multi-year-skip-audit.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Upload validated supplement package
+        if: always() && steps.verify_database.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplement-2016-2025-${{ inputs.version }}
+          path: |
+            multi-year-probe-output/summary.json
+            multi-year-release
+            multi-year-release-work/catalog.sqlite
+            multi-year-release-work/lookup-cases.json
+            multi-year-release-work/skip-audit.json
+            multi-year-release-summary.json
+            multi-year-skip-audit.json
+            multi-year-consolidation.log
+            supplement-database-validation.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Fail after preserving build diagnostics
+        if: >-
+          always() && (
+            steps.download.outcome != 'success' ||
+            steps.assemble.outcome != 'success' ||
+            steps.consolidate.outcome != 'success' ||
+            steps.package.outcome != 'success' ||
+            steps.verify_database.outcome != 'success'
+          )
+        run: exit 1
+
+  publish:
+    needs: build
+    if: inputs.publish == true
+    permissions:
+      actions: read
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: builder/pyproject.toml
+
+      - name: Install builder
+        run: python -m pip install -e "builder[test]"
+
+      - name: Download validated supplement package
+        id: publication_input
+        uses: actions/download-artifact@v4
+        with:
+          name: supplement-2016-2025-${{ inputs.version }}
+          path: .
+
+      - name: Publish immutable supplement release
+        id: publish_release
+        if: steps.publication_input.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: supplement-2016-2025-${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          assets=(
+            multi-year-release/*
+            multi-year-release-summary.json
+            multi-year-skip-audit.json
+          )
+          : > local-release-inventory.tsv
+          for asset in "${assets[@]}"; do
+            test -f "${asset}"
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> local-release-inventory.tsv
+          done
+          sort -o local-release-inventory.tsv local-release-inventory.tsv
+          if [ -n "$(cut -f1 local-release-inventory.tsv | uniq -d)" ]; then
+            echo "::error::Validated package contains duplicate release asset names." >&2
+            exit 1
+          fi
+
+          api_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status="$(curl --silent --show-error --output existing-release.json \
+            --write-out '%{http_code}' \
+            --header 'Accept: application/vnd.github+json' \
+            --header "Authorization: Bearer ${GH_TOKEN}" \
+            --header 'X-GitHub-Api-Version: 2022-11-28' \
+            "${api_url}")"
+          if [ "${status}" = 200 ]; then
+            rm -rf existing-release-assets
+            mkdir existing-release-assets
+            gh release download "${RELEASE_TAG}" --dir existing-release-assets
+            : > existing-release-inventory.tsv
+            while IFS= read -r -d '' asset; do
+              printf '%s\t%s\t%s\n' \
+                "$(basename "${asset}")" \
+                "$(stat -c '%s' "${asset}")" \
+                "$(sha256sum "${asset}" | awk '{print $1}')" \
+                >> existing-release-inventory.tsv
+            done < <(find existing-release-assets -maxdepth 1 -type f -print0)
+            sort -o existing-release-inventory.tsv existing-release-inventory.tsv
+            if ! cmp --silent local-release-inventory.tsv existing-release-inventory.tsv; then
+              diff --unified local-release-inventory.tsv existing-release-inventory.tsv || true
+              echo "::error::Existing immutable release ${RELEASE_TAG} differs by asset name, size, or SHA-256. No release or pointer was changed." >&2
+              exit 1
+            fi
+            echo "Existing immutable release is byte-for-byte equivalent; continuing idempotently."
+          elif [ "${status}" = 404 ]; then
+            gh release create "${RELEASE_TAG}" "${assets[@]}" \
+              --target "${GITHUB_SHA}" \
+              --title "Supplement catalog 2016-2025 - ${VERSION}" \
+              --notes "Validated immutable supplement movie and series catalog for years 2016 through 2025."
+          else
+            echo "::error::Could not inspect immutable release ${RELEASE_TAG}; GitHub API returned HTTP ${status}. No release or pointer was changed." >&2
+            exit 1
+          fi
+
+      - name: Public release verification
+        id: verify_release
+        if: always() && inputs.publish == true && steps.publish_release.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          RELEASE_TAG: supplement-2016-2025-${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          public_api="https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/tags/${RELEASE_TAG}"
+          status=000
+          for attempt in 1 2 3 4 5 6; do
+            status="$(curl --silent --show-error --output public-release.json \
+              --write-out '%{http_code}' \
+              --header 'Accept: application/vnd.github+json' \
+              --header 'X-GitHub-Api-Version: 2022-11-28' \
+              "${public_api}")"
+            if [ "${status}" = 200 ]; then
+              break
+            fi
+            sleep 5
+          done
+          if [ "${status}" != 200 ]; then
+            echo "::error::Release ${RELEASE_TAG} is not publicly visible; unauthenticated GitHub API returned HTTP ${status}. Pointers remain unchanged." >&2
+            exit 1
+          fi
+          python - <<'PY' > public-release-assets.tsv
+          import json
+          from pathlib import Path
+
+          release = json.loads(Path("public-release.json").read_text(encoding="utf-8"))
+          if release.get("draft") or release.get("prerelease"):
+              raise SystemExit(
+                  "::error::The supplement release must be public, non-draft, and non-prerelease."
+              )
+          for asset in release.get("assets", []):
+              print(asset["name"], asset["size"], asset["browser_download_url"], sep="\t")
+          PY
+          rm -rf public-release-assets
+          mkdir public-release-assets
+          while IFS=$'\t' read -r name declared_size url; do
+            if [[ -z "${name}" || "${name}" == "." || "${name}" == ".." || \
+              "${name}" == */* || "${name}" == *\\* ]]; then
+              echo "::error::Public release returned an unsafe asset name: ${name}" >&2
+              exit 1
+            fi
+            curl --fail --silent --show-error --location --retry 3 \
+              --output "public-release-assets/${name}" "${url}"
+            actual_size="$(stat -c '%s' "public-release-assets/${name}")"
+            if [ "${actual_size}" != "${declared_size}" ]; then
+              echo "::error::Public asset ${name} size differs from its release metadata." >&2
+              exit 1
+            fi
+          done < public-release-assets.tsv
+          : > public-release-inventory.tsv
+          while IFS= read -r -d '' asset; do
+            printf '%s\t%s\t%s\n' \
+              "$(basename "${asset}")" \
+              "$(stat -c '%s' "${asset}")" \
+              "$(sha256sum "${asset}" | awk '{print $1}')" \
+              >> public-release-inventory.tsv
+          done < <(find public-release-assets -maxdepth 1 -type f -print0)
+          sort -o public-release-inventory.tsv public-release-inventory.tsv
+          if ! cmp --silent local-release-inventory.tsv public-release-inventory.tsv; then
+            diff --unified local-release-inventory.tsv public-release-inventory.tsv || true
+            echo "::error::Public release assets do not match the validated package byte-for-byte. Pointers remain unchanged." >&2
+            exit 1
+          fi
+
+      - name: Update supplement pointer and stable channel
+        id: update_pointers
+        if: always() && inputs.publish == true && steps.verify_release.outcome == 'success'
+        continue-on-error: true
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: supplement-2016-2025-${{ inputs.version }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
+            echo "::error::Unrelated tracked change detected before generated catalog update." >&2
+            git status --short --untracked-files=no
+            exit 1
+          fi
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+
+          mkdir -p catalog/components catalog/channel
+          python builder/scripts/write_component_pointer.py \
+            --release-dir multi-year-release \
+            --installed-database multi-year-release-work/catalog.sqlite \
+            --component-id supplement-2016-2025 \
+            --component-type supplement \
+            --from-year 2016 \
+            --to-year 2025 \
+            --release-tag "${RELEASE_TAG}" \
+            --priority 200 \
+            --output catalog/components/supplement-2016-2025.json
+
+          component_arguments=()
+          shopt -s nullglob
+          for pointer in catalog/components/*.json; do
+            if [ -f "${pointer}" ]; then
+              component_arguments+=(--component "${pointer}")
+            fi
+          done
+          if [ "${#component_arguments[@]}" -eq 0 ]; then
+            echo "::error::No component pointers exist; refusing to create an empty stable channel." >&2
+            exit 1
+          fi
+          published_at="$(python - <<'PY'
+          import os
+          from datetime import UTC, datetime
+
+          value = datetime.strptime(os.environ["VERSION"], "%Y.%m.%d").replace(tzinfo=UTC)
+          print(value.isoformat().replace("+00:00", "Z"))
+          PY
+          )"
+          python builder/scripts/assemble_stable_channel.py \
+            "${component_arguments[@]}" \
+            --published-at "${published_at}" \
+            --output catalog/channel/stable.json
+
+          git add catalog/components/supplement-2016-2025.json catalog/channel/stable.json
+          while IFS= read -r changed; do
+            case "${changed}" in
+              catalog/components/supplement-2016-2025.json|catalog/channel/stable.json) ;;
+              *)
+                echo "::error::Unrelated tracked change detected before generated commit: ${changed}" >&2
+                exit 1
+                ;;
+            esac
+          done < <({ git diff --name-only; git diff --cached --name-only; } | sort -u)
+          if git diff --cached --quiet; then
+            echo "Generated catalog pointers are already current."
+            exit 0
+          fi
+          git commit -m "catalog: publish supplement 2016-2025"
+          gh auth setup-git
+          if ! git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            echo "::error::Generated catalog push failed (possibly non-fast-forward); no force push was attempted. Re-run after the competing publication completes." >&2
+            exit 1
+          fi
+
+      - name: Upload publication diagnostics
+        if: always() && inputs.publish == true
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: supplement-publication-diagnostics-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            existing-release.json
+            public-release.json
+            local-release-inventory.tsv
+            existing-release-inventory.tsv
+            public-release-inventory.tsv
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Fail after preserving publication diagnostics
+        if: >-
+          always() && (
+            steps.publish_release.outcome != 'success' ||
+            steps.verify_release.outcome != 'success' ||
+            steps.update_pointers.outcome != 'success'
+          )
+        run: exit 1
