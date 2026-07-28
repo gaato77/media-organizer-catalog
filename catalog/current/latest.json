@@ -1,8 +1,8 @@
 {
-  "full_sha256": "ebccf28d6da2ec34662467285e89c068c119fb68e2add22fadc7097691b71ebb",
+  "full_sha256": "cf63c9d781da84bda797394b78739dc9d45c581f8cce3eb56a35bb1f2f60bb85",
   "manifest_asset": "manifest.json",
-  "published_at": "2026-07-27T08:46:59Z",
-  "release_tag": "current-2026-2026.07.27-run-30251204556-1",
-  "version": "2026.07.27",
+  "published_at": "2026-07-28T07:47:18Z",
+  "release_tag": "current-2026-2026.07.28-run-30339732138-1",
+  "version": "2026.07.28",
   "year": 2026
 }
