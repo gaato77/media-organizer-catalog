@@ -69,6 +69,31 @@ def test_http_retries_503_then_returns_json():
     assert sleeps == [1.0]
 
 
+def test_http_retries_500_then_returns_json():
+    sleeps: list[float] = []
+    session = FakeSession([FakeResponse(500), FakeResponse(500), FakeResponse(200, {"ok": True})])
+
+    result = make_client(session, sleeps).post_json(
+        "https://example.test",
+        {"query": "SELECT * WHERE {}", "format": "json"},
+    )
+
+    assert result == {"ok": True}
+    assert len(session.calls) == 3
+    assert sleeps == [1.0, 2.0]
+
+
+def test_http_exhausts_retries_on_persistent_500():
+    sleeps: list[float] = []
+    session = FakeSession([FakeResponse(500) for _ in range(3)])
+
+    with pytest.raises(requests.HTTPError):
+        make_client(session, sleeps).post_json("https://example.test", {"q": "x"})
+
+    assert len(session.calls) == 3
+    assert sleeps == [1.0, 2.0]
+
+
 def test_post_json_uses_form_data_and_retries_504():
     sleeps: list[float] = []
     session = FakeSession([FakeResponse(504), FakeResponse(200, {"ok": True})])

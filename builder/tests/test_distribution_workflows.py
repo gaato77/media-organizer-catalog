@@ -610,6 +610,46 @@ def test_every_public_asset_download_restricts_and_bounds_redirects_and_size() -
         assert "--proto-redir '=https'" in download, path.name
         assert "--max-redirs 5" in download, path.name
         assert '--max-filesize "${declared_size}"' in download, path.name
+        assert "--retry-all-errors" in download, path.name
+
+
+def test_release_inspection_retries_transient_github_api_responses() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        publish_start = workflow.index("- name: Publish")
+        verify_start = workflow.index("Public release verification", publish_start)
+        publication = workflow[publish_start:verify_start]
+
+        assert 'status="$(curl' in publication, path.name
+        assert '"${api_url}" || true)"' in publication, path.name
+        assert '[ "${status}" = 200 ] || [ "${status}" = 404 ]', path.name
+        assert "Transient GitHub API response" in publication, path.name
+        _assert_ordered(
+            publication,
+            '"${api_url}" || true)"',
+            "Transient GitHub API response",
+            "Could not inspect",
+        )
+
+
+def test_public_verification_retries_release_asset_listing_lag() -> None:
+    for path in PUBLICATION_WORKFLOWS:
+        workflow = _workflow(path)
+        verification_start = workflow.index("Public release verification")
+        pointer_start = workflow.index("Update ", verification_start)
+        verification = workflow[verification_start:pointer_start]
+
+        assert '"${public_api}" || true)"' in verification, path.name
+        assert '[ "${status}" != 200 ]' in verification, path.name
+        assert "assets are not listed yet" in verification, path.name
+        assert "exposes no public assets" in verification, path.name
+        _assert_ordered(
+            verification,
+            '"${public_api}" || true)"',
+            "assets are not listed yet",
+            "exposes no public assets",
+            "public-release-inventory.tsv",
+        )
 
 
 def test_every_publication_job_is_default_branch_gated_and_least_privileged() -> None:

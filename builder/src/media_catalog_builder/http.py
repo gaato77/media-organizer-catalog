@@ -6,8 +6,8 @@ from typing import Any, Protocol, cast
 
 import requests
 
-_RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
-_MAX_BACKOFF_SECONDS = 30.0
+_RETRYABLE_STATUS_CODES = frozenset({429, 500, 502, 503, 504})
+_MAX_BACKOFF_SECONDS = 60.0
 
 
 class ResponseLike(Protocol):
