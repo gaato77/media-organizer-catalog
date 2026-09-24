@@ -71,9 +71,7 @@ def test_http_retries_503_then_returns_json():
 
 def test_http_retries_500_then_returns_json():
     sleeps: list[float] = []
-    session = FakeSession(
-        [FakeResponse(500), FakeResponse(500), FakeResponse(200, {"ok": True})]
-    )
+    session = FakeSession([FakeResponse(500), FakeResponse(500), FakeResponse(200, {"ok": True})])
 
     result = make_client(session, sleeps).post_json(
         "https://example.test",

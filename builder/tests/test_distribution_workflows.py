@@ -640,7 +640,7 @@ def test_public_verification_retries_release_asset_listing_lag() -> None:
         verification = workflow[verification_start:pointer_start]
 
         assert '"${public_api}" || true)"' in verification, path.name
-        assert "[ \"${status}\" != 200 ]" in verification, path.name
+        assert '[ "${status}" != 200 ]' in verification, path.name
         assert "assets are not listed yet" in verification, path.name
         assert "exposes no public assets" in verification, path.name
         _assert_ordered(
